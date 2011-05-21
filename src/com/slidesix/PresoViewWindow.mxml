@@ -1,0 +1,38 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init();" width="550" height="450" showCloseButton="true" title="View Preso">
+	<mx:Script>
+		<![CDATA[
+		import flash.system.ApplicationDomain;
+		import mx.controls.SWFLoader;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+
+		[Bindable] public var presoURL:String;
+		[Bindable] public var appDomain:ApplicationDomain = new ApplicationDomain(null);
+		[Bindable] public var context:LoaderContext = new LoaderContext();
+		
+		public var loader:SWFLoader;
+
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+			
+			context.applicationDomain = appDomain;
+			
+			loader = new SWFLoader();
+			loader.trustContent = true; 
+			loader.percentWidth = 100;
+			loader.percentHeight = 100;
+			
+			presoView.addChild(loader);
+
+			loader.maintainAspectRatio = true;
+			loader.loaderContext = context;
+			loader.load(presoURL);	
+		}
+		public function closeHandler(e:Event):void {
+			PopUpManager.removePopUp(this);
+		}
+		]]>
+	</mx:Script>
+	<mx:HBox id="presoView" width="100%" height="100%"></mx:HBox>
+</mx:TitleWindow>

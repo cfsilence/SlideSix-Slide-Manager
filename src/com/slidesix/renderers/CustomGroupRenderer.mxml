@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:i="com.slidesix.*" dataChange="updateImg()">
+	<mx:Script>
+		<![CDATA[
+		[Bindable] private var groupImgPath:String;
+		public function updateImg():void {
+			groupImgPath = data.PATHTOIMAGE;
+		}
+		]]>
+	</mx:Script>
+	<i:SmoothImage id="groupImg" source="{parentApplication.storeBaseURL + groupImgPath}" width="150" height="150" maintainAspectRatio="true" scaleContent="true" styleName="groupImage" toolTip="{data.NAME}" top="{(this.height / 2) - (groupImg.height / 2)}" left="{(this.width / 2) - (groupImg.width / 2)}"  />
+	<mx:Image visible="{data.PENDINGMEMBERS > 0 ? true : false}" source="@Embed(source='../../../assets/pending_members.png')" bottom="0" right="0" toolTip="Group currently has unapproved pending members" />
+</mx:Canvas>
+

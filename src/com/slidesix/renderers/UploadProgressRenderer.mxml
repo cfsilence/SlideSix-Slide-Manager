@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" dataChange="updateProgress(event)" creationComplete="init()" width="100%" horizontalScrollPolicy="off">
+	<mx:Script>
+		<![CDATA[
+		public function init():void {
+			//reset the bar 
+			progressUpload.setProgress(0, 0);
+		}
+
+		public function updateProgress(e:Event):void {
+			if (data.uploadProgress.bytesLoaded == undefined) {
+				progressUpload.setProgress(0, 0);
+			}
+			else {
+				progressUpload.setProgress(data.uploadProgress.bytesLoaded, data.uploadProgress.bytesTotal);
+			}
+		}
+		
+		]]>
+	</mx:Script>
+	<mx:HBox width="100%" paddingLeft="5" paddingRight="5">
+		<mx:ProgressBar id="progressUpload" width="100%" labelPlacement="center" mode="manual" minimum="0" label="" maximum="100" />
+	</mx:HBox>
+</mx:Canvas>
+

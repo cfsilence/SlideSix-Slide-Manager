@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" horizontalAlign="center" verticalAlign="middle">
+	<mx:Script>
+		<![CDATA[
+		import flash.events.MouseEvent;
+		public function toggleApproved(event:MouseEvent):void {
+			if (data.approved == 'true') {
+				data.approved = false;
+			}	
+			else {
+				data.approved = true;
+			}
+		}
+		]]>
+	</mx:Script>
+	
+	<mx:CheckBox selected="{data.approved == 'true' ? true : false}" click="toggleApproved(event)" />
+</mx:VBox>
+

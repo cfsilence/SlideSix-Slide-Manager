@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" width="640" height="385" creationComplete="init()" showCloseButton="true" title="" xmlns:ss="com.slidesix.*" horizontalScrollPolicy="off" verticalScrollPolicy="off" show="loadMedia()">
+	
+	<mx:Script>
+		<![CDATA[ 
+		import flash.net.URLRequest;
+		import mx.controls.Alert;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import com.slidesix.*;
+		
+		public var mp:ExternalMediaPlayer = new ExternalMediaPlayer();
+		[Bindable] public var externalMediaID:String;
+		[Bindable] public var externalMediaSource:String;
+		
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler); 
+			mpContainer.addChild(mp);
+			mp.addEventListener(ExternalMediaPlayerCreatedEvent.PLAYER_CREATED, playerCreatedHandler);
+			mp.addEventListener(ExternalMediaPlayerReadyEvent.PLAYER_READY, mediaPlayerReadyHandler);
+			mp.addEventListener(ExternalMediaReadyEvent.MEDIA_READY, mediaReadyHandler);
+		}
+		
+		public function playerCreatedHandler(e:ExternalMediaPlayerCreatedEvent):void {
+			loadMedia();
+		}
+		
+		public function mediaPlayerReadyHandler(e:ExternalMediaPlayerReadyEvent):void {
+			
+		}
+		
+		public function mediaReadyHandler(e:ExternalMediaPlayerReadyEvent):void {
+			//now the vid is loaded, can be played
+			mp.setSize(mpContainer.width, mpContainer.height);
+		}
+		
+		public function loadMedia():void {
+			mp.externalMediaID = externalMediaID;
+			mp.externalMediaSource = externalMediaSource;
+			mp.loadVideo();
+		}
+		
+		public function closeHandler(e:Event):void {
+			mp.dispose();
+			this.visible = false;
+			//PopUpManager.removePopUp(this);
+		}
+		
+		]]>
+	</mx:Script>
+	<mx:VBox id="mpContainer" width="100%" height="100%">
+	</mx:VBox>
+</mx:TitleWindow>

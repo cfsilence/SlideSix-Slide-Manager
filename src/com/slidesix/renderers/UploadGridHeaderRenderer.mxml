@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="100%">
+	<mx:HBox verticalGap="0" horizontalGap="0" width="{data.width}" height="35" horizontalAlign="center" verticalAlign="middle">
+		<mx:Label text="{data.headerText}" width="{data.width}" />
+	</mx:HBox>
+</mx:Canvas>
+

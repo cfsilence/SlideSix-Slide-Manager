@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:i="com.slidesix.*" creationComplete="init()">
+	<mx:Script>
+	<![CDATA[
+	import mx.events.FlexEvent;
+	import mx.managers.ToolTipManager;
+    import mx.controls.ToolTip;
+    import mx.events.ToolTipEvent;
+
+	[Bindable]
+	public var loaderContext:LoaderContext;
+	
+	private function imageInit(e:FlexEvent):void {
+		var isYouTube:Boolean = data.THUMBNAIL_URL.indexOf('youtube.com') != -1;
+		
+		if (data.THUMBNAIL_URL.indexOf('youtube.com') != -1 || data.THUMBNAIL_URL.indexOf('ytimg.com') != -1) {
+			externalMediaURLThumb.source = data.THUMBNAIL_URL;
+		}
+		else {
+			externalMediaURLThumb.source = parentApplication.baseURL + '/index.cfm?event=image.proxy&imagePath=' + escape(data.THUMBNAIL_URL);
+		}
+		
+	}
+	
+	public function init():void {
+		externalMediaURLThumb.addEventListener(ToolTipEvent.TOOL_TIP_SHOW, setUpTT);
+		this.addEventListener(FlexEvent.DATA_CHANGE, imageInit);
+		dispatchEvent(new FlexEvent(FlexEvent.DATA_CHANGE));
+	}
+	
+	public function setUpTT(e:ToolTipEvent):void {
+		var tt:String = 'Source: ' + data.SOURCE + '\n';
+		tt += 'Author: ' + data.AUTHOR + '\n';
+		tt += 'Published: ' + data.PUBLISHED + '\n';
+		tt += 'Average Rating: ' + data.AVERAGERATING + '\n';
+		tt += 'Description: ' + data.DESCRIPTION + '\n';
+		tt += 'Duration: ' + data.DURATION + '\n';
+		tt += 'Favorites: ' + data.FAVORITECOUNT + '\n';
+		tt += 'Views: ' + data.VIEWCOUNT + '\n';
+		
+		ToolTipManager.currentToolTip.text = tt;
+	}
+	]]>
+	</mx:Script>
+	<mx:HBox width="100%" height="100%" horizontalAlign="center" verticalAlign="middle">
+		<i:SmoothImage width="140" height="100" id="externalMediaURLThumb" maintainAspectRatio="false" scaleContent="true" styleName="externalMediaThumbImage" toolTip="Video Data" />
+	</mx:HBox>
+</mx:Canvas>
+

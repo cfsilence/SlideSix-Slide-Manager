@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:i="com.slidesix.*" creationComplete="init()">
+	<mx:Script>
+	<![CDATA[
+		import mx.events.FlexEvent;
+		import mx.utils.ObjectUtil;
+	
+	[Bindable] [Embed(source = '../../../assets/yt.jpg')] private var ytImg:Class;
+	[Bindable] [Embed(source = '../../../assets/vimeo.png')] private var vimeoImg:Class;
+	[Bindable] [Embed(source = '../../../assets/film.png')] private var genericMediaImg:Class;
+	
+	private var d:Object;
+		
+	public function init():void {
+		var d:Object = data;
+		//this.addEventListener(FlexEvent.DATA_CHANGE, imageInit);
+		if(d.EXTERNALMEDIASOURCE != null){
+			if (d.EXTERNALMEDIASOURCE.toLowerCase() == 'youtube') {
+				externalMediaIndicator.source = ytImg;
+			}
+			else if (d.EXTERNALMEDIASOURCE.toLowerCase() == 'vimeo') {
+				externalMediaIndicator.source = vimeoImg;	
+			}
+			else {
+				externalMediaIndicator.source = genericMediaImg;	
+			}
+		}
+	}
+	public function imageInit(e:FlexEvent):void {
+	}
+	]]>
+	</mx:Script>
+	<i:SmoothImage source="{parentApplication.storeBaseURL}{data.PATHTOSLIDETHUMB}" width="150" height="112" id="slide" top="{(this.height / 2) - (slide.height / 2)}" left="{(this.width / 2) - (slide.width / 2)}" maintainAspectRatio="true" scaleContent="true" styleName="slideImage" toolTip="{data.TITLE}" />
+	<i:SmoothImage visible="{data.EXTERNALMEDIAID != null ? true : false}" bottom="0" right="{data.HASMEDIA &amp;&amp; data.PATHTOSLIDEMEDIA != null ? 20 : 0}" toolTip="You have associated an external video with this slide" id="externalMediaIndicator" width="16" height="16" initialize="imageInit(event)" />
+	<mx:Image visible="{data.HASMEDIA &amp;&amp; data.PATHTOSLIDEMEDIA != null}" source="{genericMediaImg}" bottom="0" right="0" toolTip="You have recorded media here at this site for this slide" id="mediaIndicator" />
+	<!-- <mx:Label text="{data.TITLE}" truncateToFit="true" width="160" /> -->
+</mx:Canvas>
+

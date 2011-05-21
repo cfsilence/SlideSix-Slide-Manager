@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init();" width="675" height="300" showCloseButton="true" verticalAlign="middle">
+	<mx:Script>
+		<![CDATA[
+		import mx.events.DynamicEvent;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import mx.utils.ObjectUtil;
+		
+		public var needUploadEvent:DynamicEvent;
+		public var needHelpEvent:DynamicEvent;
+		
+		[Bindable] [Embed(source = 'assets/presentation.png')] private var presoImg:Class;
+		
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+			needUploadEvent = new DynamicEvent("needUploadEvent");
+ 			needUploadEvent.name = name;
+ 			needHelpEvent = new DynamicEvent("needHelpEvent");
+ 			needHelpEvent.name = name;
+		}
+		
+		public function closeHandler(e:Event):void {
+			PopUpManager.removePopUp(this);
+		}
+		public function needUpload():void{
+			dispatchEvent(needUploadEvent);
+			closeHandler(new Event(Event.CLOSE));
+		}
+		public function needHelp():void{
+			dispatchEvent(needHelpEvent);
+			closeHandler(new Event(Event.CLOSE));
+		}
+		]]>
+	</mx:Script>
+	
+	<mx:HBox width="100%" height="100%" verticalAlign="middle">
+		<mx:HBox width="200" horizontalAlign="center">
+			<mx:Image source="{presoImg}" />
+		</mx:HBox>
+		<mx:HBox width="450" fontSize="16">
+			<mx:VBox width="100%">
+				<mx:Text width="428" text="Welcome To The Management Console!" fontWeight="bold" />
+				<mx:Text fontSize="14" width="425" text="We couldn't help but notice that you haven't uploaded a presentation yet.  Click 'Get Started' below to start uploading or importing your presentations.  You can upload a PowerPoint (PPT, PPS), Acrobat (PDF), or OpenOffice (ODP, SXI) file or import presentations from Google Docs.  Any time you want to upload or import in the Management Console just click 'Upload/Import' in the menu at the top of the page.  If you'd like to learn how things work click 'Help' below or from the top menu at any time." />
+				<mx:HBox width="428">
+					<mx:Button label="Get Started" color="#ffffff" fontWeight="bold" click="needUpload()" width="200" />
+					<mx:Spacer width="100%" />
+					<mx:Button label="Help" color="#ffffff" fontWeight="bold" click="needHelp()" width="200" />
+				</mx:HBox>
+			</mx:VBox>
+		</mx:HBox>
+	</mx:HBox>
+	
+</mx:TitleWindow>

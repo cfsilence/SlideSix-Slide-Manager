@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" fontSize="10" creationComplete="init();" width="670" height="510" showCloseButton="true" title="External Media" verticalAlign="middle">
+	<mx:Script>
+		<![CDATA[
+			import mx.rpc.events.FaultEvent;
+			import mx.utils.URLUtil;
+		import mx.controls.Alert;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import mx.rpc.events.ResultEvent;
+		import mx.collections.ArrayCollection;
+		import mx.utils.ObjectUtil;
+		import flash.events.KeyboardEvent;
+
+		
+		[Bindable] public var slideID:String;
+		[Bindable] public var externalMediaID:String;
+		[Bindable] public var externalMediaSource:String;
+		[Bindable] public var externalMedia:ArrayCollection;
+		//possible search options:
+		//AUTHOR,AUTHORURL,AVERAGERATING,COMMENTSURL,CONTENT,DESCRIPTION,DURATION,
+		//FAVORITECOUNT,ID,KEYWORDS,LINK,NUMCOMMENTS,NUMRATINGS,PUBLISHED,
+		//THUMBNAIL_HEIGHT,THUMBNAIL_URL,THUMBNAIL_WIDTH,TITLE,TOTAL,UPDATED,VIEWCOUNT
+
+		[Bindable] public var orderOptions:ArrayCollection = new ArrayCollection([ 
+			{label:'Published', data:'published' }, 
+			{label:'Relevance', data:'relevance'}, 
+			{label:'Views', data:'viewcount'}, 
+			{label:'Rating', data:'averagerating'}, 
+			{label:'Favorites', data:'favoritecount'}
+		]);
+		
+		Security.loadPolicyFile("http://i.ytimg.com/crossdomain.xml");
+		Security.loadPolicyFile("http://vimeo.com/crossdomain.xml");
+		
+		public var youTubeBaseURL:String = 'http://gdata.youtube.com/feeds/api/videos/';
+		
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+		}
+		public function onShow():void {
+			stage.focus = null;
+			directURLBox.setFocus();
+		}
+		
+		public function closeHandler(e:Event):void {
+			this.visible = false;
+		}
+		
+		public function saveExternalMediaFromSearchClicked(event:MouseEvent):void {
+			
+			if (externalMediaID.length > 0) {
+				Alert.show('Are you sure?  This slide already has external media.  This action will replace the existing video.', 'Confirm', 3, this, saveFromSearchConfirmed);
+			}
+			else {
+				var id:String = getIDFromSearch();
+				var source:String = externalMediaPreviewDisplay.selectedItem.SOURCE.toLowerCase();
+				saveExternalMedia(id,source);
+			}
+			
+		}
+		
+		public function saveExternalMediaDirectClicked(event:MouseEvent):void {
+			
+			if (externalMediaID.length > 0) {
+				Alert.show('Are you sure?  This slide already has external media.  This action will replace the existing video.', 'Confirm', 3, this, saveDirectConfirmed);
+			}
+			else {
+				directAttachVideo();
+			}
+			
+		}
+		public function getParamsFromURL():Object{
+			var u:String = directURLBox.text;
+			var source:String = URLUtil.getServerName(u).toLowerCase();
+			var id:String = '';
+			var s:String = '';
+			var vU:Array;
+			var r:Object = new Object();
+			
+			if(u.length == 0){
+				Alert.show('You must enter a URL');
+			}
+			
+			if(source.indexOf('vimeo.com') > -1){
+				vU = u.split('/');
+				id = vU[vU.length - 1];
+				s = 'vimeo';
+			}
+			if(source.indexOf('youtube.com') > -1){
+				vU = u.split('?');
+				var qO:Object = URLUtil.stringToObject(vU[vU.length - 1], "&");
+				id = qO["v"];
+				s = 'youtube';
+			}
+			if(u.length > 0 && (source.indexOf('vimeo.com') == -1 && source.indexOf('youtube.com') == -1)){
+				Alert.show('Please enter a URL to a Vimeo or YouTube video');
+			}
+			
+			r["id"] = id;
+			r["source"] = s;
+			return r;
+		}
+		public function directAttachVideo():void{
+			var params:Object = getParamsFromURL();
+			var id:String = params["id"];
+			var s:String = params["source"];
+			if(id.length && s.length){
+				saveExternalMedia(id,s);
+			}
+		}
+		
+		public function previewVideoFromURLInput():void {
+			var params:Object = getParamsFromURL();
+			var id:String = params["id"];
+			var s:String = params["source"];
+			if(id.length && s.length){
+				parentApplication.showExternalMediaPlayWindow(id,s);
+			}
+		}
+		
+		public function saveDirectConfirmed(e:CloseEvent):void {
+				if (e.detail == Alert.YES) {
+					directAttachVideo();
+				}
+				else {
+				
+				}
+		}
+		
+		public function saveFromSearchConfirmed(e:CloseEvent):void {
+				if (e.detail == Alert.YES) {
+					var id:String = getIDFromSearch();
+					var source:String = externalMediaPreviewDisplay.selectedItem.SOURCE.toLowerCase();
+					saveExternalMedia(id,source);
+				}
+				else {
+				
+				}
+		}
+		
+		public function getIDFromSearch():String {
+			var id:String;
+			if (externalMediaPreviewDisplay.selectedItem.ID.indexOf(':') > -1) {
+				var idArr:Array = externalMediaPreviewDisplay.selectedItem.ID.split(':');
+				id = idArr[idArr.length - 1];
+			}
+			else {
+				id = externalMediaPreviewDisplay.selectedItem.ID.toString();
+			}
+			return id;
+		}
+		
+		public function previewVideoFromSearch():void {
+			if (externalMediaPreviewDisplay.selectedIndex != -1) {
+				var id:String = getIDFromSearch();
+				var source:String = externalMediaPreviewDisplay.selectedItem.SOURCE.toLowerCase();
+				if (id.length > 0) {
+					parentApplication.showExternalMediaPlayWindow(id,source);
+				}
+			}
+		}
+		
+		public function saveExternalMedia(id:String,source:String):void {
+			var p:Object = new Object();
+			p.method = 'saveExternalMedia';
+			p.externalMediaID = id;
+			p.externalMediaSource = source;
+			p.returnFormat = 'plain';
+			p.slideID = slideID;
+            slideService.saveExternalMedia.send(p);
+		}
+
+		public function slideServiceHandler(event:ResultEvent):void {
+			var method:String = event.token.message.body[0].method;
+			switch (method) {
+				case 'saveExternalMedia':
+					parentApplication.slideDisplay.selectedItem.externalMediaID = event.token.message.body[0].externalMediaID;
+					parentApplication.slideDisplay.selectedItem.externalMediaSource = event.token.message.body[0].externalMediaSource;
+					
+					Alert.show('Video is now attached to slide');
+					directURLBox.text = '';
+					//this.visible = false;
+					break;
+			}
+			
+		}
+		
+		public function searchVideos():void {
+			if (searchBox.text.length > 1) {
+				parentApplication.statusMsg.text = 'Searching';
+				var uParams:Object = new Object();
+				uParams.returnFormat = 'plain';
+				uParams.search = searchBox.text;
+				uParams.sortBy = orderBy.selectedIndex == -1 ? 'published' : orderBy.selectedItem.data;
+				uParams.max = 50;
+				uParams.method = 'searchVideos';
+				externalMediaService.searchVideos.send(uParams);	
+			}
+			else {
+				Alert.show('Search term must be greater then 1 character');
+			}
+			
+		}
+		
+		public function externalMediaServiceHandler(event:ResultEvent):void {
+			var method:String = event.token.message.body[0].method;
+			externalMedia = event.result as ArrayCollection;
+			if (event.result.length == 0) Alert.show('We didn\'t find any videos matching that keyword.  Try again?');
+			switch (method) {
+				case 'searchVideos':
+					parentApplication.statusMsg.text = '';
+					break;
+			}
+			
+		}
+	
+		public function checkEnter(event:KeyboardEvent):void{
+			/// <cr> or <enter>
+			var from:String = event.currentTarget.valueOf();
+			
+			if (event.keyCode==13){
+				if(from.indexOf('directURLBox') > 0){
+					saveExternalMediaDirectClicked(new MouseEvent(MouseEvent.CLICK));
+				}
+				else{
+					searchVideos();
+				}
+				
+			}
+		}
+		
+		public function faultHandler(e:FaultEvent):void{
+			Alert.show('An unexpected error has occurred.  Please try again later');
+		}
+
+		]]>
+	</mx:Script>
+	
+	<mx:RemoteObject id="slideService" endpoint="/flex2gateway/" destination="ColdFusion" source="model.slides.remoteSlideService" showBusyCursor="true">
+		<mx:method name="saveExternalMedia" result="slideServiceHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:RemoteObject id="externalMediaService" endpoint="/flex2gateway/" destination="ColdFusion" source="model.externalMedia.remoteExternalMediaService" showBusyCursor="true">
+		<mx:method name="searchVideos" result="externalMediaServiceHandler(event)" fault="faultHandler(event)" />
+		<!--
+		<mx:method name="getVideosByUser" result="externalMediaServiceHandler(event)" fault="parentApplication.faultHandler(event)" />
+		<mx:method name="getVideosBySearch" result="externalMediaServiceHandler(event)" fault="parentApplication.faultHandler(event)" />
+		-->
+	</mx:RemoteObject>
+	
+	<mx:HBox styleName="formContainer" width="100%">
+		<mx:Text id="urlInputLabel" text="Enter Video URL:" width="105" />
+		<mx:TextInput id="directURLBox" width="80%" text="" toolTip="Enter the direct URL to a YouTube or Vimeo video clip." keyUp="checkEnter(event)" />
+		<mx:Button id="previewViaURLBtn" width="75" label="Preview" enabled="{directURLBox.text.length &gt; 0 ? true : false}" toolTip="{directURLBox.text.length &gt; 0 ? 'Preview this video' : 'Enter a URL'}" click="previewVideoFromURLInput()" />
+		<mx:Button id="attachViaURLBtn" width="75" label="Attach" enabled="{directURLBox.text.length &gt; 0 ? true : false}" toolTip="{directURLBox.text.length &gt; 0 ? 'Preview this video' : 'Enter a URL'}" click="saveExternalMediaDirectClicked(event)" />
+	</mx:HBox>
+	
+	<mx:HBox styleName="formContainer" width="100%">
+		<mx:Text id="searchLabel" text="Search Videos:" width="105" />
+		<mx:TextInput id="searchBox" width="80%" text="" toolTip="Enter keyword.  We will search YouTube and Vimeo for videos by this keyword.  This could be a username, search term, group or channel name." keyUp="checkEnter(event)" />
+		<mx:ComboBox id="orderBy" dataProvider="{orderOptions}" prompt="Sort By" styleName="dropDown" width="75" toolTip="Choose how you would like the search results sorted" />
+		<mx:Button id="searchVideosBtn" label="Go" width="75" click="searchVideos()" />
+	</mx:HBox>
+	
+	<mx:HBox styleName="formContainer" width="100%" id="searchResultsContainer">
+		<mx:TileList id="externalMediaPreviewDisplay" dataProvider="{externalMedia}" borderStyle="none" itemRenderer="com.slidesix.renderers.ExternalMediaDisplayRenderer" height="320" width="100%" columnWidth="150" rowHeight="110" columnCount="5" backgroundAlpha="0.0" doubleClickEnabled="true" doubleClick="previewVideoFromSearch()" />	
+		<mx:VBox backgroundColor="#cc0000">
+			
+		</mx:VBox>
+	</mx:HBox>
+	
+	<mx:HBox styleName="formContainer" width="100%">
+		
+		<mx:Button id="previewExternalMediaBtn" width="75" label="Preview" enabled="{externalMediaPreviewDisplay.selectedIndex != -1}" toolTip="{externalMediaPreviewDisplay.selectedIndex != -1 ? 'View this video (shortcut: you can also double click a thumbnail above)' : 'Choose a video from search results'}" click="previewVideoFromSearch()" alpha="{previewExternalMediaBtn.enabled ? 1.0 : 0.3}" />
+		
+		<mx:Button id="saveExternalMediaBtn" width="75" label="Attach" click="saveExternalMediaFromSearchClicked(event)" enabled="{externalMediaPreviewDisplay.selectedIndex != -1}" toolTip="{externalMediaPreviewDisplay.selectedIndex != -1 ? 'Attach this video to your slide' : 'Choose a video from search results'}" alpha="{saveExternalMediaBtn.enabled ? 1.0 : 0.3}" />
+	</mx:HBox>
+</mx:TitleWindow>

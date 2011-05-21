@@ -1,0 +1,72 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init();" width="500" height="450" showCloseButton="true" title="Notes" verticalAlign="middle">
+	<mx:Script>
+		<![CDATA[
+		import mx.controls.Alert;
+		import mx.events.CloseEvent;
+		import mx.rpc.events.ResultEvent;
+		
+		[Bindable] public var slideServiceURL:String;
+		[Bindable] public var existingNotes:String;
+		[Bindable] public var showNotes:Boolean;
+		public var slideID:String;
+		
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+		}
+		public function closeHandler(e:Event):void {
+			this.visible = false;
+		}
+			
+		public function validateNotes():Array {
+			var errors:Array = new Array();
+			if (slideNotes.text.length > 4000) {
+				errors.push('Notes must be 4000 characters or less.  Currently your notes are ' + slideNotes.text.length + ' characters long.');
+			}
+			return errors;
+		}
+			
+		public function saveNotesClicked(event:MouseEvent):void {
+			var errors:Array = validateNotes();
+			
+			if (errors.length > 0) {
+				var msg:String = 'Please address the following errors before we can save this slide:\n';
+				for (var i:int = 0; i < errors.length; i++) {
+					msg += '*' + errors[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				saveSlideNotes();
+			}
+		}
+		public function saveSlideNotes():void {
+			var p:Object = new Object();
+			p.notes = slideNotes.text;
+			p.showNotes = notesPublic.selected ? 1 : 0;
+			slideShowService.saveSlideInfo.send(slideID,p);
+		}
+		
+		public function saveSlideInfoHandler(event:ResultEvent):void {
+			parentApplication.slideDisplay.selectedItem.NOTES = slideNotes.text;
+			this.visible = false;
+		}
+	
+		]]>
+	</mx:Script>
+	
+	<mx:RemoteObject id="slideShowService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.slideshows.RemoteSlideshowService" showBusyCursor="true">
+		<mx:method name="saveSlideInfo" result="saveSlideInfoHandler(event)" fault="parentApplication.faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:HBox styleName="formContainer" width="100%">
+		<mx:TextArea id="slideNotes" width="100%" height="300" text="{existingNotes}" />
+	</mx:HBox>
+	<mx:HBox styleName="formContainer" width="100%">
+		<mx:RadioButton groupName="showNotesOptions" id="notesPublic" label="Show Notes" selected="{showNotes}" toolTip="Show these notes to viewers." />
+		<mx:RadioButton groupName="showNotesOptions" id="notesPrivate" label="Hide Notes" selected="{!showNotes}" toolTip="Hide these notes from viewers." />
+	</mx:HBox>
+	<mx:HBox styleName="formContainer" width="100%">
+		<mx:Button id="saveSlideNotesBtn" label="Save" click="saveNotesClicked(event)" icon="@Embed(source='../../assets/disk.png')" />
+	</mx:HBox>
+</mx:TitleWindow>

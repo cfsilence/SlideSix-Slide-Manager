@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationPolicy="all" creationComplete="init();" width="700" height="450" showCloseButton="true" verticalAlign="middle">
+	<mx:Script source="scripts/faq.as" /> 
+	<mx:Script>
+		<![CDATA[
+			import mx.rpc.events.ResultEvent;
+		import mx.collections.ArrayCollection;
+		import mx.core.Container;
+		import mx.controls.Alert;
+		import mx.events.DynamicEvent;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import mx.utils.ObjectUtil;
+		
+		[Bindable] [Embed(source = 'assets/help_icon_200.png')] private var helpImg:Class;
+		[Bindable] public var faqCategories:ArrayCollection = new ArrayCollection(['all topics']);
+		[Bindable] public var contactURL:String;
+		
+		public var contactFrom:String;
+		public var contactFromID:String;
+		public var contactFromEmail:String;
+		public var initialView:String = 'helpMenu';
+
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+			setHelpView();
+			helpStack.addEventListener(Event.CHANGE, function():void{
+				if(helpStack.selectedChild.label == 'faq'){
+					resetFAQ();
+				}
+				if(helpStack.selectedChild.label == 'contact'){
+					resetContactForm();
+				}
+			});
+			
+			for(var i:int = 0; i < faqs.length; i++){
+				var theseCats:String = faqs.getItemAt(i, 0).c;
+				var theseCatsArr:Array = theseCats.split(',');
+				for(var c:int = 0; c < theseCatsArr.length; c++){
+					var thisCat:String = theseCatsArr[c];
+					if(!faqCategories.contains(thisCat)){
+						faqCategories.addItem(thisCat);
+					}
+				}
+			}
+			setHelpView();
+		}
+		
+		public function setHelpView():void{
+			getHelpView(initialView);
+		}
+		
+		public function closeHandler(e:Event):void {
+			helpStack.selectedIndex = helpStack.getChildIndex(helpStack.getChildByName('helpMenu'));
+			this.visible = false;
+		}
+		
+		public function resetFAQ():void{
+			faqList.verticalScrollPosition = 0;
+			faqList.selectedIndex = -1;
+			faqCategory.selectedIndex = 0;
+			faqSearchTerm.text = '';
+		}
+		
+		public function resetContactForm():void{
+			contactMsg.text = '';
+		}
+		
+		private function broadcastNeedHelpVideo():void{
+			var topic:String = helpStack.selectedChild.label;
+			var needVideoEvent:DynamicEvent = new DynamicEvent("needVideoEvent");
+ 			needVideoEvent.name = name;
+ 			needVideoEvent.topic = topic;
+ 			dispatchEvent(needVideoEvent);
+		}
+			
+		public function getHelpView(topic:String):void{
+			helpStack.selectedChild = Container(helpStack.getChildByName(topic));
+		}
+		public function getContactWindow():void{
+			var needContactWindowEvent:DynamicEvent = new DynamicEvent("needContactWindowEvent");
+ 			needContactWindowEvent.name = name;
+ 			dispatchEvent(needContactWindowEvent);
+ 			this.visible = false;
+		}
+		
+		public function faqFilterFunc(item:Object):Boolean {
+			var searchString:String = faqSearchTerm.text.toLowerCase();
+			var searchTopic:String = faqCategory.selectedItem.valueOf();
+			if(searchTopic != 'all topics' && searchString.length > 0){
+				return (item.q.toLowerCase().indexOf(searchString) > -1 || item.a.toLowerCase().indexOf(searchString) > -1) && item.c.toLowerCase().indexOf(searchTopic) > -1;	
+			}
+			else if(searchTopic != 'all topics' && searchString.length == 0){
+				return item.c.toLowerCase().indexOf(searchTopic) > -1;	
+			}
+			else{
+				return (item.q.toLowerCase().indexOf(searchString) > -1 || item.a.toLowerCase().indexOf(searchString) > -1);
+			}
+			 
+		}
+		
+		public function filterFAQ():void {
+			faqList.selectedIndex = -1;
+			if (faqSearchTerm.text.length || faqCategory.selectedItem.valueOf() != 'all topics') {
+				faqList.dataProvider.filterFunction = faqFilterFunc;
+				faqList.dataProvider.refresh();	
+			}
+			else {
+				faqList.dataProvider.filterFunction = null;
+				faqList.dataProvider.refresh();	
+			}
+			faqList.verticalScrollPosition = 0;
+		}
+		
+		public function validateContactForm():Array {
+			var errors:Array = new Array();
+			
+			if (!contactMsg.text.length) {
+				errors.push('Please enter your feedback.');
+			}
+			
+			return errors;
+		}
+		public function sendContactClicked(event:MouseEvent):void {
+			var e:Array = validateContactForm();
+			if (e.length > 0) {
+				var msg:String = 'Please address the following errors:\n';
+				for (var i:int = 0; i < e.length; i++) {
+					msg += '*' + e[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				sendContact();
+			}
+		}
+		public function sendContact():void {
+			var p:Object = new Object();
+			p.contactFromEmail = contactFromEmail;
+			p.contactFrom = contactFrom + '(' + contactFromID + ')';
+			p.contactMsg = contactMsg.text;
+            contactService.send(p);
+		}
+		
+		public function contactServiceHandler(event:ResultEvent):void {
+			Alert.show('Thank you for your feedback.  We will evaluate it as soon as possible');
+			resetContactForm();
+		}
+		public function goIdeaScale():void {
+			var urlRequest:URLRequest = new URLRequest('http://slidesix.ideascale.com');
+			navigateToURL(urlRequest, '_blank');	
+		}
+		
+		]]>
+	</mx:Script>
+	
+	<mx:HTTPService showBusyCursor="true" id="contactService" url="{contactURL}" resultFormat="text" result="contactServiceHandler(event)" fault="parentApplication.faultHandler(event)" />
+	
+	<mx:ViewStack id="helpStack" width="100%" height="100%" fontSize="18">
+		<mx:VBox label="helpMenu" id="helpMenu" width="100%" height="100%" verticalAlign="middle">
+			<mx:HBox width="100%" height="100%" verticalAlign="middle">
+				<mx:HBox>
+					<mx:Image source="{helpImg}" width="200" />
+				</mx:HBox>
+				<mx:HBox width="100%">
+					<mx:VBox width="100%">
+						<mx:Label text="Management Console Help" fontWeight="bold" />
+						<mx:Label text="Please choose a topic to learn more..." fontSize="14" />
+						<mx:HBox width="100%">
+							<mx:Button id="uploadHelpBtn" width="50%" label="Uploading/Importing" color="#ffffff" click="getHelpView('uploadHelp')" />
+							<mx:Button id="presoHelpBtn" width="50%" label="My Presentations" color="#ffffff" click="getHelpView('presoHelp')" />
+						</mx:HBox>
+						<mx:HBox width="100%">
+							<mx:Button id="slideHelpBtn" width="50%" label="Enhancing Slides" color="#ffffff" click="getHelpView('slideHelp')" />
+							<mx:Button id="profileHelpBtn" width="50%" label="Managing My Profile" color="#ffffff" click="getHelpView('profileHelp')" />
+						</mx:HBox>
+						<mx:HBox width="100%">
+							<mx:Button id="groupHelpBtn" width="50%" label="Managing Groups" color="#ffffff" click="getHelpView('groupHelp')" />
+							<mx:Button width="50%" label="FAQ" color="#ffffff" click="getHelpView('faq')" />
+						</mx:HBox>
+						<mx:HBox width="100%">
+							<mx:Button id="conferenceHelpBtn" width="50%" label="Managing Conferences" color="#ffffff" click="getHelpView('conferenceHelp')" />
+						</mx:HBox>
+						<mx:HBox width="100%">
+							<mx:Button width="50%" label="Contact Us" color="#ffffff" click="getHelpView('contact')" />
+							<mx:Button width="50%" label="Exit Help" color="#ffffff" click="closeHandler(new Event(Event.CLOSE))" />
+						</mx:HBox>
+					</mx:VBox>
+				</mx:HBox>
+			</mx:HBox>
+		</mx:VBox>
+		
+		<mx:HBox label="uploadHelp" id="uploadHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+				<mx:Image source="@Embed('assets/presentation.png')" />
+			</mx:VBox>
+			<mx:VBox width="100%" height="370" verticalAlign="middle">
+				<mx:Text width="428" text="Uploading/Importing Presentations" fontWeight="bold" />
+				<mx:Text fontSize="14" width="436" text="To get started uploading a presentation to SlideSix click 'Upload/Import' from the top menu bar in the Management Console.  In the new window that opens click 'Browse' to select a file or multiple files (up to 50mb - PPT, PPS, PDF, ODP, SXI) and enter some details about your presentation in the panel that opens up next to the list of your files.  When you're ready just click 'Upload' in the bottom right corner of the upload window.  The upload status is reported in the top of the window.  Once your presentations have all been uploaded you can close the upload window and your presentation list will be automatically refreshed.  If you would rather import a presentation from Google Docs you can click 'Go To Import Screen' in the top right corner of the uploader window, enter your Google credentials and authenticate, then select your presentations and click 'Import'." />
+			</mx:VBox>
+		</mx:HBox>
+				
+		<mx:HBox label="presoHelp" id="presoHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+				<mx:Image source="@Embed('assets/slide.png')" />
+			</mx:VBox>
+			<mx:VBox width="100%" height="370" verticalAlign="middle">
+				<mx:Text width="428" text="My Presentations" fontWeight="bold" />
+				<mx:Text fontSize="14" width="436" text="After you have uploaded a presentation you may be asking yourself, 'Now What?'.  Great question!  Now it's time to enhance your presentation.  Single click on the presentation thumbnail and a new menu will appear that will let you edit and view info about your presentation.  You'll also notice a 'gear' icon near each thumbnail.  Single click that gear to show the presentation options menu which gives you additional actions.  For example, if your presentation is not yet published you can publish it from the options menu.  Once you have selected (single clicked) a presentation you should notice that the 'Slides' button is enabled in the top menu.  Click that to view the slides associated with that presentation.  A quick shortcut for viewing your slides is to just double-click the presentation thumbnail." />
+			</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="slideHelp" id="slideHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+				<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+					<mx:Image source="@Embed('assets/multimedia.png')" />
+				</mx:VBox>
+				<mx:VBox width="100%" height="370" verticalAlign="middle">
+					<mx:Text width="428" text="My Presentation Slides" fontWeight="bold" />
+					<mx:Text fontSize="14" width="436" text="After we've converted your presentation you can enhance it in all kinds of really cool ways.  Single click on a presentation thumbnail and you'll see a larger version of that slide.  Above the larger view of the slide you'll see another menu of buttons to allow you to perform additional actions.  Click 'View' to open your presentation in a new window and see what it looks like on SlideSix.  Click 'Notes' to open a new window that will show you any imported notes (you can also edit and save them).  Click 'Narrate' (or double click a slide thumbnail) to open a window that will let you record audio/video narration directly from your webcam and microphone.  Click 'Video' to search for external videos from YouTube and Vimeo to attach to your slide.  Don't forget you can always click 'Help' in the menu at the top of the Management Console to learn more." />
+				</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="profileHelp" id="profileHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+				<mx:Image source="@Embed('assets/user.png')" />
+			</mx:VBox>
+			<mx:VBox width="100%" height="370" verticalAlign="middle">
+				<mx:Text width="428" text="Managing Your Profile" fontWeight="bold" />
+				<mx:Text fontSize="14" width="436" text="To edit your profile just click on the 'Profile' button in the top menu of the Management Console.  You'll be able to edit things like your bio, password, and collaborate chat room password.  Once you've made your changes click 'Save Profile' on the bottom of the profile screen.  To upload a profile picture click 'Upload Profile Pic' in the bottom menu, and select a photo (JPG, PNG, GIF).  Once the photo is uploaded you'll have to crop the image to make sure it fits our standard size.  Move the highlighted square to the desired location and then click 'Crop Image' to finalize your profile picture.  If you're a developer you can click 'Developer API Keys' to obtain a key that can be used with the SlideSix API (see http://slidesix.com/developerAPI for more info).  If you want to see how your profile looks to others click 'View Profile' in the bottom menu and your profile will be opened in a new web page." />
+			</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="groupHelp" id="groupHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+					<mx:Image source="@Embed('assets/group_large.png')" />
+				</mx:VBox>
+				<mx:VBox width="100%" height="370" verticalAlign="middle">
+					<mx:Text width="428" text="Managing Your Groups" fontWeight="bold" />
+					<mx:Text fontSize="14" width="436" text="To create and manage your groups click the 'Groups' button in the top menu.  To create a new group click 'New Group' on the groups page.  Enter a group name and description, choose whether or not new members should be auto approved (or if you'd like to manually approve them) and then click 'Save Group'.  If you choose to manually approve new members you will see a small 'pending members' icon in the bottom right corner of the group thumbnail.  To approve members click on the 'Pending Members' (only visible after single clicking on the group thumbnail).  To upload a group picture click 'Upload Group Pic' in the bottom menu, and select a photo (JPG, PNG, GIF).  Once the photo is uploaded you'll have to crop the image to make sure it fits our standard size.  Move the highlighted square to the desired location and then click 'Crop Image' to finalize your group picture.  If you want to see how your group looks to others click 'View Group' in the bottom menu and your group page will be opened in a new web page." />
+				</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="conferenceHelp" id="conferenceHelp" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+					<mx:Image source="@Embed('assets/group_large.png')" />
+				</mx:VBox>
+				<mx:VBox width="100%" height="370" verticalAlign="middle">
+					<mx:Text width="428" text="Managing Your Conferences" fontWeight="bold" />
+					<mx:Text fontSize="14" width="436" text="To create and manage your conferences click the 'Conferences' button in the top menu.  To create a new conference click 'New Conference' on the conferences page.  Enter a conference name and description, choose whether or not new members should be auto approved (or if you'd like to manually approve them) and then click 'Save Conference'.  If you choose to manually approve new members you will see a small 'pending members' icon in the bottom right corner of the conference thumbnail.  To approve members click on the 'Pending Members' (only visible after single clicking on the conference thumbnail).  To upload a conference picture click 'Upload Conference Pic' in the bottom menu, and select a photo (JPG, PNG, GIF).  Once the photo is uploaded you'll have to crop the image to make sure it fits our standard size.  Move the highlighted square to the desired location and then click 'Crop Image' to finalize your conference picture.  If you want to see how your conference looks to others click 'View Conference' in the bottom menu and your conference page will be opened in a new web page." />
+				</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="contact" id="contact" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+					<mx:Image source="@Embed(source='assets/email_icon.png')" />
+				</mx:VBox>
+				<mx:VBox width="100%" height="370" verticalAlign="middle">
+					<mx:Text width="428" text="Contact Us" fontWeight="bold" />
+					<mx:TextArea id="contactMsg" width="100%" height="100%" />
+					<mx:HBox styleName="formContainer" width="100%" horizontalAlign="left">
+						<mx:Button id="goIdeaScaleBtn" label="SlideSix On IdeaScale" click="goIdeaScale()" icon="@Embed(source='assets/comment.png')" toolTip="Enter Feedback at IdeaScale!" />
+						<mx:Spacer width="100%" />
+						<mx:Button id="sendFeedbackBtn" label="Send" click="sendContactClicked(event)" icon="@Embed(source='assets/email_go.png')" toolTip="Send feedback to us, we love it!" />
+					</mx:HBox>
+				</mx:VBox>
+		</mx:HBox>
+		
+		<mx:HBox label="faq" id="faq" width="100%" height="370" verticalAlign="middle" fontSize="16">
+			<mx:VBox width="200" horizontalAlign="center" verticalAlign="middle" height="370">
+				<!--<mx:Text width="200" text="Frequently Asked Questions" fontWeight="bold" />-->
+				<mx:Image source="{helpImg}" />
+			</mx:VBox>
+			<mx:VBox width="100%" height="370" id="faqBox">
+				<mx:HBox width="100%">
+					<mx:TextInput width="100%" id="faqSearchTerm" keyUp="filterFAQ()" valueCommit="filterFAQ()"/>
+					<mx:ComboBox id="faqCategory" dataProvider="{faqCategories}" change="filterFAQ()" />
+					<mx:Button id="clearFAQSearchBtn" label="Clear" enabled="{faqSearchTerm.text.length &gt; 0 ? true : false}" click="faqSearchTerm.text = '';" />
+				</mx:HBox>
+				<mx:List height="135" width="100%" dataProvider="{faqs}" id="faqList" click="aDisplay.verticalScrollPosition = 0;">
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:HBox width="100%">
+								<mx:Text text="{data.q}" />
+							</mx:HBox>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:List>
+				<mx:TextArea editable="false" width="480" height="193" htmlText="{faqList.selectedItem.a}" id="aDisplay" />
+			</mx:VBox>
+		</mx:HBox>
+		
+	</mx:ViewStack>
+	
+	<mx:ControlBar width="100%" fontSize="18" height="40">
+		<mx:Button id="goToHelpBtn" label="Help Menu" visible="{helpStack.getChildByName('helpMenu') != null &amp;&amp; helpStack.selectedIndex != helpStack.getChildIndex(helpStack.getChildByName('helpMenu'))}" click="if(helpStack.getChildByName('helpMenu') != null) helpStack.selectedIndex = helpStack.getChildIndex(helpStack.getChildByName('helpMenu'));" />
+		<mx:Spacer width="100%" />
+		<mx:Button id="getHelpVideo" label="View Help Video" visible="{helpStack.getChildByName('helpMenu') != null &amp;&amp; helpStack.selectedIndex != helpStack.getChildIndex(helpStack.getChildByName('helpMenu')) &amp;&amp; helpStack.selectedIndex != helpStack.getChildIndex(helpStack.getChildByName('contact')) &amp;&amp; helpStack.selectedIndex != helpStack.getChildIndex(helpStack.getChildByName('faq'))}" click="broadcastNeedHelpVideo()" icon="@Embed('assets/film.png')" />
+		<mx:Text id="faqCount" visible="{helpStack.getChildByName('faq') != null &amp;&amp; helpStack.selectedIndex == helpStack.getChildIndex(helpStack.getChildByName('faq'))}" textAlign="right" width="{helpStack.getChildByName('faq') != null &amp;&amp; helpStack.selectedIndex == helpStack.getChildIndex(helpStack.getChildByName('faq')) ? 190 : 0}" text="{faqList.dataProvider.length.toString() != '1' ? faqList.dataProvider.length + ' Topics Found' : faqList.dataProvider.length + ' Topic Found'}" />
+	</mx:ControlBar>
+</mx:TitleWindow>

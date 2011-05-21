@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" horizontalAlign="center" verticalAlign="middle">
+	<mx:Script>
+		<![CDATA[
+			import flash.events.MouseEvent;
+			import mx.utils.ObjectUtil;
+			
+			public function checkNone():void {
+				if(!approveMember.selected && !denyMember.selected){
+					data.approved = null;
+				}
+			}
+			
+			public function toggleApproved(event:MouseEvent):void {
+				if(approveMember.selected){
+					data.approved = true;
+					denyMember.selected = false;
+				}	
+				checkNone();
+			}
+			public function toggleDenied(event:MouseEvent):void{
+				if(denyMember.selected){
+					data.approved = false;
+					approveMember.selected = false;
+				}	
+				checkNone();
+			}
+		]]>
+	</mx:Script>
+	
+	<mx:CheckBox id="approveMember" click="toggleApproved(event)" label="Approve" />
+	<mx:CheckBox id="denyMember" click="toggleDenied(event)" label="Deny" />
+</mx:HBox>

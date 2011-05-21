@@ -1,0 +1,157 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init();" width="600" height="260" title="Welcome To The SlideSix Management Console" verticalAlign="middle" horizontalAlign="left" effectEnd="closeHandler()" headerHeight="0" borderColor="#000000" borderThicknessBottom="0" borderThicknessLeft="0" borderThicknessRight="0" borderThicknessTop="0">
+	<mx:Script>
+		<![CDATA[
+		import mx.effects.Fade;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import mx.rpc.events.ResultEvent;
+		import mx.controls.Alert;
+		
+		public var f:Fade;
+		[Bindable] [Embed(source = '../../assets/arrow_green.png')] private var greenArrow:Class;
+		
+		public function init():void {
+			f = new Fade(this);
+			f.alphaFrom = 1.0;
+			f.alphaTo = 0;
+			f.duration = 250;
+		}
+		public function closeHandler():void {
+			PopUpManager.removePopUp(this);
+		}
+
+		public function welcomeAction(a:String):void {
+			f.play();
+			switch(a) {
+				case 'upload':
+				parentApplication.openUploadWindow()
+				break;
+				case 'import':
+				parentApplication.openImportWindow()
+				break;
+				case 'profile':
+				parentApplication.goToProfileView()
+				break;
+				case 'groups':
+				parentApplication.goToGroupView()
+				break;
+			}
+		}
+		
+		]]>
+	</mx:Script>
+	<mx:Style>
+	.redbtn{
+		corderRadius: 8;
+		highlightAlphas: 0.45, 0.15;
+		fillAlphas: 1, 1, 0.85, 0.85;
+		fillColors: #990000, #ff0000, #ff0000, #990000;
+		color: #ffffff;
+		textRollOverColor: #ffffff;
+		borderColor: #000000;
+		themeColor: #000000;
+		fontSize: 14px;
+		upSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		overSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		downSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		disabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedUpSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedOverSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDownSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDisabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+	}
+	.redpanel{
+		headerColors: #990000, #ff0000;
+		titleBackgroundSkin: ClassReference('mx.skins.halo.TitleBackground');
+		paddingTop: 10;
+		paddingBottom: 10;
+		paddingLeft: 10;
+		paddingRight: 10;
+	}
+	.purplebtn{
+		corderRadius: 8;
+		highlightAlphas: 0.45, 0.15;
+		fillAlphas: 1, 1, 0.85, 0.85;
+		fillColors: #400080, #8000FF, #8000FF, #400080;
+		color: #ffffff;
+		textRollOverColor: #ffffff;
+		borderColor: #000000;
+		themeColor: #000000;
+		fontSize: 14px;
+		upSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		overSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		downSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		disabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedUpSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedOverSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDownSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDisabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+	}
+	.purplepanel{
+		headerColors: #400080, #8000FF;
+		titleBackgroundSkin: ClassReference('mx.skins.halo.TitleBackground');
+		paddingTop: 10;
+		paddingBottom: 10;
+		paddingLeft: 10;
+		paddingRight: 10;
+	}
+	.greenbtn{
+		corderRadius: 8;
+		highlightAlphas: 0.45, 0.15;
+		fillAlphas: 1, 1, 0.85, 0.85;
+		fillColors: #00D500, #00FF00, #00FF00, #00D500;
+		color: #ffffff;
+		textRollOverColor: #ffffff;
+		borderColor: #000000;
+		themeColor: #000000;
+		fontSize: 14px;
+		upSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		overSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		downSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		disabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedUpSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedOverSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDownSkin: ClassReference('mx.skins.halo.ButtonSkin');
+		selectedDisabledSkin: ClassReference('mx.skins.halo.ButtonSkin');
+	}
+	.greenpanel{
+		headerColors: #00D500,#00FF00;
+		titleBackgroundSkin: ClassReference('mx.skins.halo.TitleBackground');
+		paddingTop: 10;
+		paddingBottom: 10;
+		paddingLeft: 10;
+		paddingRight: 10;
+	}
+	.text{
+		fontSize: 16px;
+		textAlign: center;
+	}
+	.tStyle{
+		fontSize: 14px;
+		fontWeight: bold;
+		letterSpacing: 2px;
+		
+	}
+	</mx:Style>
+	
+	<mx:HBox width="100%" height="100%" horizontalAlign="center" verticalAlign="middle">
+		<mx:Panel width="33%" height="100%" title="Upload/Import" styleName="purplepanel" titleStyleName="tStyle" horizontalAlign="center" verticalAlign="middle">
+			<mx:Text styleName="text" width="100%" textAlign="center" htmlText="Upload New Presentation(s)"></mx:Text>
+			<mx:Button width="100%" label="Go" styleName="purplebtn" click="welcomeAction('upload')" />
+			<mx:Text styleName="text" width="100%" textAlign="center" htmlText="Import Presentation(s) From Services Like Google Docs"></mx:Text>
+			<mx:Button width="100%" label="Go" styleName="purplebtn" click="welcomeAction('import')" />
+		</mx:Panel>
+		<mx:Panel width="33%" height="100%" title="My Presos" styleName="greenpanel" titleStyleName="tStyle" horizontalAlign="center" verticalAlign="middle">
+			<mx:Text styleName="text" width="100%" textAlign="center" htmlText="View &amp; Edit All of Your Existing Presentations"></mx:Text>
+			<mx:Button width="100%" label="Go" styleName="greenbtn" click="welcomeAction('presos')" />
+		</mx:Panel>
+		<mx:Panel width="33%" height="100%" title="Profile/Groups" styleName="redpanel" titleStyleName="tStyle" horizontalAlign="center" verticalAlign="middle">
+			<mx:Text styleName="text" width="100%" textAlign="center" htmlText="Edit Your Personal Info And Bio"></mx:Text>
+			<mx:Button width="100%" label="Go" styleName="redbtn" click="welcomeAction('profile')" />
+			<mx:Text styleName="text" width="100%" textAlign="center" htmlText="Create &amp; Manage Groups And Memberships"></mx:Text>
+			<mx:Button width="100%" label="Go" styleName="redbtn" click="welcomeAction('groups')" />
+		</mx:Panel>
+	</mx:HBox>
+	
+</mx:TitleWindow>

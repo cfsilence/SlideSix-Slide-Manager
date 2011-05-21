@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:i="com.slidesix.*" creationComplete="init()">
+	<mx:Script>
+		<![CDATA[
+		[Bindable] [Embed(source = '../../../assets/cog.png')] private var cogImg:Class;
+   		private function init():void{
+   		}
+		]]>
+	</mx:Script>
+
+	<i:SmoothImage source="{parentApplication.storeBaseURL}{data.PATHTOTHUMB}" top="{(this.height / 2) - (slideshowThumb.height / 2)}" left="{(this.width / 2) - (slideshowThumb.width / 2)}" id="slideshowThumb" width="150" height="112" maintainAspectRatio="true" scaleContent="true" styleName="slideImage" toolTip="{data.TITLE}" />
+	<mx:HBox bottom="0" width="100%">
+		<mx:Label fontSize="12" text="{data.TITLE}" truncateToFit="true" width="160" />
+	</mx:HBox>
+	<mx:HBox bottom="0" right="5">
+		<mx:Image id="optionsBtn" source="{cogImg}" click="parentApplication.showMenu(this.x,this.y)" toolTip="Click to view options" buttonMode="true" />
+	</mx:HBox>
+</mx:Canvas>
+

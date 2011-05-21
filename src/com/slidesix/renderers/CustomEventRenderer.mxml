@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:i="com.slidesix.*" dataChange="updateImg()">
+	<mx:Script>
+		<![CDATA[
+		[Bindable] private var eventImgPath:String;
+		public function updateImg():void {
+			eventImgPath = data.PATHTOIMAGE;
+		}
+		]]>
+	</mx:Script>
+	<i:SmoothImage id="eventImg" source="{parentApplication.storeBaseURL + eventImgPath}" width="150" height="150" maintainAspectRatio="true" scaleContent="true" styleName="eventImage" toolTip="{data.NAME}" top="{(this.height / 2) - (eventImg.height / 2)}" left="{(this.width / 2) - (eventImg.width / 2)}"  />
+	<mx:Image visible="{data.PENDINGMEMBERS > 0 ? true : false}" source="@Embed(source='../../../assets/pending_members.png')" bottom="0" right="0" toolTip="Event currently has unapproved pending members" />
+</mx:Canvas>
+

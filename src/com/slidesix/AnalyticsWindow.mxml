@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" backgroundColor="#000000" creationComplete="init();" width="700" height="500" showCloseButton="true" title="Presentation Analytics">
+	<mx:Style>
+		.big{
+			fontSize: 14px;
+			fontWeight: bold;
+			letterSpacing: 1px;
+			textAlign: center;
+		}
+		.box{
+			borderStyle: solid;
+			paddingBottom: 10px;
+			paddingTop: 10px;
+			paddingRight: 10px;
+			paddingLeft: 10px;
+			borderColor: #000000;
+		}
+	</mx:Style>
+	<mx:Script>
+		<![CDATA[
+		import mx.charts.HitData;
+		import mx.controls.Alert;
+		import mx.controls.dataGridClasses.DataGridColumn;
+		import mx.events.CloseEvent;
+		import mx.managers.PopUpManager;
+		import mx.collections.ArrayCollection;
+		import mx.rpc.events.ResultEvent;
+		import mx.utils.ObjectUtil;
+		
+		[Bindable] public var alias:String;
+		[Bindable] public var analyticsByPage:ArrayCollection;
+		[Bindable] public var analyticsByPageMetaData:Object;
+		[Bindable] public var analyticsByDay:ArrayCollection;
+		[Bindable] public var analyticsByDayMetaData:Object;
+		
+		
+		public function init():void {
+			this.addEventListener(CloseEvent.CLOSE, closeHandler);
+			//set the default view
+			mainAnalyticsContainer.selectedChild = viewOverview;
+			getAnalyticsOverview()
+		}
+		public function closeHandler(e:Event):void {
+			PopUpManager.removePopUp(this);
+		}
+		public function getAnalyticsOverview():void {
+			analyticsByPage = new ArrayCollection();
+			analyticsByPageMetaData = new Object();
+			analyticsByDay = new ArrayCollection();
+			analyticsByDayMetaData = new Object();
+			var p:Object = new Object();
+			p.alias = alias;
+			googleAnalyticsService.getSlideAnalyticsOverview.send(p);
+		}
+		
+		public function slideAnalyticsHandler(e:ResultEvent):void {
+			//trace(ObjectUtil.toString(e.result));
+			analyticsByPage = e.result.PAGEDETAILS.DATA as ArrayCollection;
+			analyticsByPageMetaData = e.result.PAGEDETAILS.METADATA as Object;
+			analyticsByDay = e.result.PAGEBYDAY.DATA as ArrayCollection;
+			analyticsByDayMetaData = e.result.PAGEBYDAY.METADATA as Object;
+			trace(ObjectUtil.toString(analyticsByDay));
+			if(analyticsByDay.length == 0){
+				notEnoughDataMsg.visible = true;
+			}
+		}
+		public function fieldNumericSorter(field:String):Function {
+			 return function (obj1:Object, obj2:Object):int {
+				var num:Number = ((Number)(obj1[field]) - (Number)(obj2[field]));
+				return (num > 0) ? 1 : ((num < 0) ? -1 : 0);
+			}
+		}
+		
+		private function timeLabel(item:Object, col:DataGridColumn):String {
+			return formatTime(item.timeOnPage);
+		}
+		
+		private function formatTime(seconds:String):String {
+			var s:Number = seconds.split('.')[0];
+			var mins:Number = Math.floor(s > 60 ? s / 60 : 00);
+			var hours:Number = Math.floor(mins > 60 ? mins / 60 : 00);
+			var ss:Number = Math.floor(s > 60 ? s - (60 * mins) : s);
+			if (mins > 60) mins = mins - 60;
+			var h:String = hours < 10 ? '0' + hours.toString() : hours.toString();
+			var m:String = mins < 10 ? '0' + mins.toString() : mins.toString();
+			var sss:String = ss < 10 ? '0' + ss.toString() : ss.toString();
+			//trace(s + '--' + hours + ':' + mins + ':' + seconds);
+			return h + ':' + m + ':' + sss;
+		}
+		private function pageLabel(item:Object, col:DataGridColumn):String {
+			var pArr:Array = item.pagePath.split('/');
+			var p:String = pArr[pArr.length-1];
+			return p;
+		}
+		
+		//fix the goofy yyyymmdd date format that google gives me
+		private function dateFormatSpecial(item:Object, prevValue:Object, axis:CategoryAxis, categoryItem:Object):String {
+           return formatGoogleDate(item.toString());
+        }
+	
+		private function formatGoogleDate(d:String):String{
+			return d.substr(4,2) + '/' + d.substr(6,2);
+		}
+		private function formatDataTip(h:HitData):String{
+			return formatGoogleDate(h.item.date) + ': <b>' + h.item.pageviews + ' Views </b>';
+		}
+		]]>
+	</mx:Script>
+	
+	<mx:RemoteObject id="googleAnalyticsService" endpoint="/flex2gateway/" requestTimeout="20" destination="ColdFusion" source="model.google.remoteAnalyticsService" showBusyCursor="true">
+		<mx:method name="getSlideAnalyticsOverview" result="slideAnalyticsHandler(event)" fault="parentApplication.faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:DateFormatter id="dFormatter" formatString="MM/DD/YY" />
+	
+	<mx:SolidColor id="solid" color="red" alpha=".3"/>
+    <mx:Stroke id="stroke" color="red" weight="2"/>
+
+	<mx:ViewStack id="mainAnalyticsContainer" width="100%" height="100%">
+		<mx:VBox id="viewOverview" width="100%" height="100%"><!-- start view one -->
+			<mx:HBox width="100%">
+				<mx:Text fontSize="16" text="Not Enough Data To Analyze" visible="false" id="notEnoughDataMsg" />
+				<mx:Spacer width="100%" />
+				<mx:Text fontSize="16" text="{dFormatter.format(analyticsByPageMetaData.startDate)} {analyticsByPageMetaData.startDate.toString().length &gt; 0 ? '-' : ''} {dFormatter.format(analyticsByPageMetaData.endDate)}" />
+			</mx:HBox>
+			<mx:HBox width="100%" styleName="box" height="150">
+				<mx:AreaChart id="analyticsByDayChart" showDataTips="true" dataTipFunction="formatDataTip" width="100%" height="100%" dataProvider="{analyticsByDay}" paddingLeft="0" paddingRight="0">
+					<mx:horizontalAxis>
+		            	<mx:CategoryAxis categoryField="date" labelFunction="dateFormatSpecial" id="x1" />
+		            </mx:horizontalAxis>
+		            <mx:horizontalAxisRenderers>
+			         	<mx:AxisRenderer labelRotation="65" axis="{x1}" canDropLabels="true" canStagger="true">
+			         		<mx:labelRenderer>
+		                        <mx:Component>
+		                            <mx:Label toolTip="{this.myTip}">
+		                                <mx:Script><![CDATA[
+		                                	import mx.utils.ObjectUtil;
+		                                    [Bindable]
+		                                    private var myTip:String;
+		
+		                                    override public function set data(value:Object):void{
+		                                        if(value == null)return;
+		                                        myTip = value.text;
+		                                        text = value.text;
+		                                    }
+		                                ]]></mx:Script>
+		                            </mx:Label>
+		                        </mx:Component>
+		                    </mx:labelRenderer>
+			         	</mx:AxisRenderer>
+			        </mx:horizontalAxisRenderers>
+
+					<mx:series>
+						 <mx:AreaSeries yField="pageviews" form="segment" displayName="Views" areaStroke="{stroke}" areaFill="{solid}"/>
+					</mx:series>
+				</mx:AreaChart>
+				<!-- <mx:Legend dataProvider="{analyticsByDayChart}"/> -->
+			</mx:HBox>
+			<mx:HBox width="100%" styleName="box">
+				
+				<mx:HBox styleName="box" width="25%">
+					<mx:VBox width="100%" horizontalAlign="center">
+						<mx:Text styleName="big" text="Total Views" />
+						<mx:HRule width="100%" />
+						<mx:Text styleName="big" text="{analyticsByPageMetaData.pageviews}" />
+					</mx:VBox>
+				</mx:HBox>
+				<mx:HBox styleName="box" width="25%">
+					<mx:VBox width="100%" horizontalAlign="center">
+						<mx:Text styleName="big" text="Unique Views" />
+						<mx:HRule width="100%" />
+						<mx:Text styleName="big" text="{analyticsByPageMetaData.uniquePageviews}" />
+					</mx:VBox>
+				</mx:HBox>
+				<mx:HBox styleName="box" width="25%">
+					<mx:VBox width="100%" horizontalAlign="center">
+						<mx:Text styleName="big" text="Avg Time" />
+						<mx:HRule width="100%" />
+						<mx:Text styleName="big" text="{formatTime(analyticsByPageMetaData.pageviews)}" />
+					</mx:VBox>
+				</mx:HBox>
+				<mx:HBox styleName="box" width="25%">
+					<mx:VBox width="100%" horizontalAlign="center">
+						<mx:Text styleName="big" text="New Visits" />
+						<mx:HRule width="100%" />
+						<mx:Text styleName="big" text="{analyticsByPageMetaData.newVisits}" />
+					</mx:VBox>
+				</mx:HBox>
+				
+			</mx:HBox>
+			
+			<mx:HBox id="analyticsGridContainer" width="100%" height="100%">
+				<mx:DataGrid id="dgAnalytics" width="100%" height="100%" verticalAlign="middle" dataProvider="{analyticsByPage}" paddingBottom="0" paddingTop="0">
+					<mx:columns>
+						<mx:DataGridColumn headerText="Page" dataField="pagePath" headerWordWrap="true" width="300" labelFunction="pageLabel" />
+						<mx:DataGridColumn headerText="Unique Views" headerWordWrap="true" dataField="uniquePageviews" sortCompareFunction="fieldNumericSorter('uniquePageviews')" textAlign="center" />
+						<mx:DataGridColumn headerText="Views" headerWordWrap="true" dataField="pageviews" sortCompareFunction="fieldNumericSorter('pageviews')" textAlign="center" />
+						<mx:DataGridColumn headerText="Time On Slide" headerWordWrap="true" dataField="timeOnPage" sortCompareFunction="fieldNumericSorter('timeOnPage')" labelFunction="timeLabel" textAlign="center" />
+						<mx:DataGridColumn headerText="New Visits" headerWordWrap="true" dataField="newVisits" sortCompareFunction="fieldNumericSorter('newVisits')" textAlign="center" />
+					</mx:columns>
+				</mx:DataGrid>
+			</mx:HBox>
+		</mx:VBox><!-- end view one -->
+	</mx:ViewStack>
+	
+	<mx:ControlBar height="45">
+		<!--<mx:Button label="Impressive Button Bar" />-->
+	</mx:ControlBar>
+	
+</mx:TitleWindow>

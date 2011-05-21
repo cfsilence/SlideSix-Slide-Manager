@@ -1,0 +1,624 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init();" width="800" height="400" showCloseButton="true" title="{uploadWindowViewStack.selectedChild == uploadView ? 'Upload' : 'Import'}" paddingBottom="10" paddingTop="10" paddingRight="10" paddingLeft="10">
+	<mx:Style>
+	.gridHeader{
+		backgroundColor: #ffffff;
+		verticalAlign: bottom;
+		textAlign: right;
+	}
+	</mx:Style>
+	<mx:Script>
+		<![CDATA[
+			import com.adobe.crypto.MD5;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.Spacer;
+			import mx.controls.Text;
+			import mx.controls.TextArea;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.utils.ObjectProxy;
+			import mx.utils.ObjectUtil;
+			
+			public var background:uint;
+			public var fileRef:FileReferenceList = new FileReferenceList();
+			public var baseURL:String;
+			public var presenterID:Number;
+			public var currentUser:Object;
+			public var totalBytes:uint = 0;
+			public var fileFilters:Array = new Array();
+			public var maxFileSize:int = 52428800;
+			
+			public var currentFileIndex:int;
+			public var cfid:String;
+			public var cftoken:String;
+			public var jsessionid:String;
+			public var filesWereUploaded:Boolean = false;
+			public var uploadQueueComplete:Boolean = false;
+			public var acceptedExtensions:Array;
+			[Bindable] public var isUploading:Boolean = false;
+			public var importQSize:Number = 0;
+			public var importsCompleted:Number = 0;
+			public var importQueueComplete:Boolean = false;
+			
+			[Bindable] public var importDocsDP:ArrayCollection;
+			[Bindable] public var slideShowServiceURL:String;
+			[Bindable] public var uploadURL:String;
+			[Bindable] public var statusBar:String = 'Click browse to select file(s)';
+			[Bindable] public var titleBarText:String = 'Upload Presentations';
+			[Bindable] public var fileArr:ArrayCollection = new ArrayCollection();
+			[Bindable] public var nameColumnWidth:uint = 80;
+			[Bindable] public var importOptions:ArrayCollection = new ArrayCollection([ {label:'Google Docs', data:'googledocs' } ]);
+
+			public function init():void {
+				//listen for window close
+				this.addEventListener(CloseEvent.CLOSE, closeHandler);
+				fileFilters.push(new FileFilter('Presentation Files (*.ppt;*.pps;*.pdf;*.odp;*.sxi;*.mov;)','*.ppt;*.pps;*.pdf;*.odp;*.sxi;*.mov;'));
+
+			}
+			
+			public function closeHandler(e:Event):void {
+				if (filesWereUploaded && (importQueueComplete || uploadQueueComplete)) {
+					parentApplication.getSlideShows();
+				}
+				this.visible = false;
+			}
+			
+			public function onBrowse(event:MouseEvent):void {
+				fileRef.addEventListener(Event.SELECT, onSelectFile);
+				fileRef.browse(fileFilters);
+			}
+			
+			public function onSelectFile(event:Event):void {
+				for (var i:uint = 0; i < event.currentTarget.fileList.length; i++) {
+					var alreadyExistsInList:Boolean = false;
+					var nArr:Array = event.currentTarget.fileList[i].name.split('.');
+					
+					for (var j:uint = 0; j < fileArr.length; ++j) {
+						if (fileArr[j].name == event.currentTarget.fileList[i].name) {
+							alreadyExistsInList = true;
+						}
+					}
+					
+					var ext:String;
+			
+					if (event.currentTarget.fileList[i].type != null && event.currentTarget.fileList[i].type.toUpperCase() != 'NO%F') {
+						if (event.currentTarget.fileList[i].type.substr(0,1) == '.') {
+							ext = event.currentTarget.fileList[i].type.substr(1, event.currentTarget.fileList[i].type.length);
+						}
+						else {
+							ext = event.currentTarget.fileList[i].type;
+						}
+					}
+					else {
+						
+						ext = nArr[nArr.length - 1];
+					}
+					
+					var isValidFile:Boolean = acceptedExtensions.indexOf(ext.toLowerCase()) == -1 ? false : true;
+					
+					if (ext.toLowerCase() == 'sld8' && nArr[nArr.length - 1].toLowerCase() == 'pptx') {
+						isValidFile = false;
+					}
+		
+					
+					var isValidSize:Boolean = maxFileSize == 0 || event.currentTarget.fileList[i].size < maxFileSize ? true : false;
+						
+					if (isValidFile && isValidSize && !alreadyExistsInList) {
+						var p:Object = new Object();
+						var emptyFileItem:Object = {name: '', type: '', size: 0, file: '', title:'', abstract: '', tags: '', password: '', repeatPassword: '', autoPublish: true, statusText: 'Pending Upload', showNotes: true, uploadProgress: {bytesLoaded:0,bytesTotal:0}};
+						var currentFile:ObjectProxy = new ObjectProxy(emptyFileItem);
+						currentFile.name = event.currentTarget.fileList[i].name;
+						currentFile.type = event.currentTarget.fileList[i].type;
+						currentFile.size = event.currentTarget.fileList[i].size;
+						currentFile.file = event.currentTarget.fileList[i];
+						currentFile.title = event.currentTarget.fileList[i].name.split('.')[0];
+						currentFile.abstract = 'This is my presentation about ' + event.currentTarget.fileList[i].name.split('.')[0] + '.';
+						currentFile.autoPublish = true;
+						currentFile.showNotes = true;
+						fileArr.addItem(currentFile);
+
+						if(fileArr.length == 1){
+							uploadStatusTxt.text = 'Enter presentation details and then click upload when you\'re ready to create presentations.';
+						}
+						dgFiles.dataProvider.refresh();
+						if (dgFiles.selectedIndex == -1) dgFiles.selectedIndex = 0;
+					} 
+					else if(!isValidSize){
+						Alert.show("The file (" + event.currentTarget.fileList[i].name + ") exceeds the max file size of " + bToMB(maxFileSize), "File Size Error")
+					}
+					else if (!isValidFile){
+						Alert.show('Invalid file type (' + ext + ')!\nFile must be one of the following types:\n' + acceptedExtensions.join(','));
+					}
+					else if (alreadyExistsInList) {
+						Alert.show('You\'ve already added that file (' + event.currentTarget.fileList[i].name + ').')
+					}
+					
+				}
+				
+			}
+			
+			public function uploadPreso(currentFileIndex:Number):void {
+				try {
+					var request:URLRequest = new URLRequest(uploadURL);
+					var params:URLVariables = new URLVariables();   
+					params.method = 'uploadSlideshow';
+					params.fileField = 'slideshowImportFile';
+					params.returnFormat = 'plain';
+					params.currentFileIndex = currentFileIndex;
+					request.method = URLRequestMethod.POST;
+					request.data = params;
+					fileArr[currentFileIndex].file.addEventListener(Event.COMPLETE , uploadComplete);
+					fileArr[currentFileIndex].file.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA , uploadCompleteData);
+					fileArr[currentFileIndex].file.addEventListener(ProgressEvent.PROGRESS,monitorProgress);
+					fileArr[currentFileIndex].file.addEventListener(IOErrorEvent.IO_ERROR,handleError);
+					fileArr[currentFileIndex].file.upload(request, 'slideshowImportFile', false);
+					fileArr[currentFileIndex].statusText = 'Uploading';
+					dgFiles.dataProvider.refresh();
+					
+				} catch(e:Error) {
+					Alert.show("Error: " + e);
+				}
+				
+			}
+			
+			public function saveSlideshowInfoAndConvertHandler(event:ResultEvent):void{
+				var idx:Number = event.token.message.body[2].currentFileIndex;
+				if (idx == fileArr.length - 1) {
+					uploadQueueComplete = true;
+					filesWereUploaded = true;
+					isUploading = false;
+					parentApplication.loadBar.label = '';
+					parentApplication.loadBar.visible = false;
+					uploadStatusTxt.text = 'Upload complete.  When you close this window your presentations will be refreshed.';
+				}
+				try{
+					fileArr.removeItemAt(idx);
+				}
+				catch(e:Error){}
+			}
+			
+			public function saveSlideshowInfoAndConvert(tempFileName:String, title:String, autoPublish:Boolean, userTitle:String, description:String, tags:String, currentFileIndex:Number):void {
+				var params:Object = new Object();
+				params.title = userTitle;
+				params.abstract = description;
+				params.tags = tags;
+				params.notifyComments = 1;
+				params.currentFileIndex = currentFileIndex;
+				params.showNotes = fileArr[currentFileIndex].showNotes;
+				if (fileArr[currentFileIndex].password.length) params.password = fileArr[currentFileIndex].password;
+				fileArr[currentFileIndex].statusText = 'Saving';
+				
+				if (autoPublish) {
+					params.lastBuildDate = parentApplication.dateFormatter.format(parentApplication.dateToString(new Date()));
+				}
+				
+				dgFiles.dataProvider.refresh();
+				
+				slideShowRemoteService.saveSlideshowInfoAndConvert.send(tempFileName,0,params,currentUser.ID);
+				
+			}
+			
+			public function validate():Object {
+				var rObj:Object = { msg:'Please address the following errors before uploading:\n', hasErrors:false };
+				
+				
+				for (var i:uint = 0; i < fileArr.length; ++i) {
+					//should we check passwords?
+					if (fileArr[i].password.length || fileArr[i].repeatPassword.length) {
+						if (MD5.hash(fileArr[i].password) != MD5.hash(fileArr[i].repeatPassword)) {
+							rObj.msg += 'Passwords must match for row ' + (i + 1) + ' (file: ' + fileArr[i].name + ')\n';
+							rObj.hasErrors = true;
+						}
+					}
+					if(fileArr[i].title.length > 255){
+						rObj.msg += 'Title must be less then 255 characters for row ' + (i + 1) + ' (file: ' + fileArr[i].name + ')\n';
+						rObj.hasErrors = true;
+					}
+					if(!fileArr[i].title.length){
+						rObj.msg += 'Title is required for row ' + (i + 1) + ' (file: ' + fileArr[i].name + ')\n';
+						rObj.hasErrors = true;
+					}
+					if(!fileArr[i].abstract.length){
+						rObj.msg += 'Description is required for row ' + (i + 1) + ' (file: ' + fileArr[i].name + ')\n';
+						rObj.hasErrors = true;
+					}
+					if(fileArr[i].abstract.length > 3000){
+						rObj.msg += 'Description must be less then 3000 characters for row ' + (i + 1) + ' (file: ' + fileArr[i].name + ')\n';
+						rObj.hasErrors = true;
+					}
+				}
+				return rObj;
+			}
+			public function onImport(event:MouseEvent):void {
+				
+				for (var i:Number = 0; i < importDocsDP.length; i++) {
+					var thisItem:Object = importDocsDP.getItemAt(i);
+					if (thisItem.importDoc) {
+						importQSize++;	
+						var p:Object = new Object();
+						p.gUsername = iUsername.text;
+						p.gPassword = iPassword.text;				
+						p.type = thisItem.type;
+						p.format = 'pdf';
+						p.idx = i;
+						p.id = thisItem.id;
+						googleDocService.download.send(p);
+						thisItem.statusText = 'Importing';
+						dgImport.dataProvider.refresh();
+						parentApplication.loadBar.label = 'Importing Presentations';
+						parentApplication.loadBar.visible = true;
+					}
+				}
+				uploadStatusTxt.text = 'You may close this window while uploading/importing to continue working';	
+			}
+			
+			public function onUpload(event:MouseEvent):void {
+				var validationCheck:Object = validate();
+				if (!validationCheck.hasErrors) {
+					if (totalBytes > maxFileSize) {
+						Alert.show('Queue size exceeds ' + bToMB(maxFileSize) + '.  Please remove a few files from the queue in order to maintain system stability.  You can upload more files after this queue is complete.');
+					} 
+					else {
+						
+						dgFiles.selectedIndex = -1;
+						for (var i:uint = 0; i < fileArr.length; ++i) {
+							if (i == 0) {
+								isUploading = true;
+								parentApplication.loadBar.label = 'Uploading Presentations';
+								parentApplication.loadBar.visible = true;
+								uploadStatusTxt.text = 'You may close this window while uploading/importing to continue working';
+							}
+							uploadPreso(i);
+						}	
+					}
+				}
+				else {
+					Alert.show(validationCheck.msg, 'Attention');
+				}
+			}
+			
+			// I handle upload IO Errors 
+			public function handleError(event:IOErrorEvent):void {
+				//Alert.show(ObjectUtil.toString(event));
+				//var error:String = 'ERROR: ' + event.text + '\n';
+				//Alert.show(error);
+				parentApplication.faultHandler(event);
+			}
+		  
+		    public function uploadCompleteData(event:DataEvent):void {
+				var tempFileName:String = event.data.toString();
+				var idx:Number;
+				
+				for (var i:Number = 0; i < fileArr.length; i++) {
+					if (fileArr[i].name == event.currentTarget.name) {
+						idx = i;
+						break;
+					}
+				}
+				saveSlideshowInfoAndConvert(tempFileName, fileArr[idx].name, fileArr[idx].autoPublish, fileArr[idx].title, fileArr[idx].abstract, fileArr[idx].tags,idx);
+				
+				dgFiles.dataProvider.refresh();
+            }
+			
+			public function uploadComplete(event:Event):void {
+			}
+			
+            public function monitorProgress(event:ProgressEvent):void {
+				var idx:Number;
+				
+				for (var i:Number = 0; i < fileArr.length; i++) {
+					if (fileArr[i].name == event.currentTarget.name) {
+						idx = i;
+						break;
+					}
+				}
+				fileArr[idx].uploadProgress.bytesLoaded = event.bytesLoaded;
+				fileArr[idx].uploadProgress.bytesTotal = event.bytesTotal;
+				if (fileArr[idx].uploadProgress.bytesLoaded == fileArr[idx].uploadProgress.bytesTotal) fileArr[idx].statusText = 'Finalizing Upload';
+				dgFiles.dataProvider.refresh();
+            }
+			
+			public function onRemove(event:MouseEvent):void {
+				var selected:Array = dgFiles.selectedIndices;
+				
+				if (Number(selected[0]) < Number(selected[selected.length-1])) {
+					selected.reverse();
+				}
+				for each(var i:uint in selected) {
+					fileArr.removeItemAt(i);	
+					dgFiles.dataProvider.refresh();
+				}		
+				
+			}
+
+			public function bToMB(b:int):String {
+				return String(((b/1024)/1024).toFixed(2)) + " mb";
+			}
+		
+			// Label Function for dataGrid size column
+			public function bytesToKilobytes(data:Object,blank:Object):String {
+				return String(Math.round(data.size/1024)) + " kb";
+			}			
+			
+			public function importAuthenticate(e:Event):void {
+				var p:Object = new Object();
+				p.gUsername = iUsername.text;
+				p.gPassword = iPassword.text;
+				var service:String;
+				
+				if (importService.selectedIndex == -1) {
+					Alert.show('Please choose a service');
+				}
+				else {
+					service = importService.selectedItem.data;
+					switch(service) {
+						case 'googledocs':
+						googleDocService.authenticate.send(p);
+						break;
+					}
+				}
+			}
+			
+			public function googleAuthHandler(e:Event):void {
+				importViewStack.selectedChild = importDetailView;
+				getDocList();
+			}
+			public function deselectAllImport():void {
+				for (var i:Number = 0; i < dgImport.dataProvider.length; i++) {
+					importDocsDP.getItemAt(i).importDoc = false;
+				}
+				dgImport.dataProvider.refresh();
+			}
+			public function selectAllImport():void {
+				for (var i:Number = 0; i < dgImport.dataProvider.length; i++) {
+					importDocsDP.getItemAt(i).importDoc = true;
+				}
+				dgImport.dataProvider.refresh();
+			}
+			public function resetImportState():void {
+				importViewStack.selectedChild = loginView;
+				iUsername.text = '';
+				iPassword.text = '';
+				importService.selectedIndex = -1;
+			}
+			
+			public function getDocList():void {
+				importDocsDP = new ArrayCollection();
+				
+				var p:Object = new Object();
+				p.doctype = 'presentation';
+				p.gUsername = iUsername.text;
+				p.gPassword = iPassword.text;
+				googleDocService.getDocumentList.send(p);
+			}
+			public function googleDocListHandler(e:ResultEvent):void {
+				importQueueComplete = false;
+				importDocsDP = e.result as ArrayCollection;
+				if (importDocsDP.length == 0) Alert.show('No presentations found.');
+				for (var i:Number = 0; i < importDocsDP.length; i++) {
+					importDocsDP.getItemAt(i).importDoc = true;
+					importDocsDP.getItemAt(i).statusText = 'Pending Import';
+					dgImport.dataProvider.refresh();
+				}
+			}
+			
+			public function googleDownloadHandler(event:ResultEvent):void {
+				var idx:Number = event.token.message.body[0].idx;
+				var thisItem:Object = importDocsDP.getItemAt(idx);
+				var filePath:String = event.result.toString();
+				var currentSlideShowID:String = parentApplication.createUUID();
+				var titleFixed:String = thisItem.title.substr(0, 50);
+				var params:Object = new Object();
+				params.filePath = filePath;
+				params.slideshowID = currentSlideShowID;
+				params.slideshowTitle = titleFixed;
+				params.abstract = 'This is my presentation about ' + titleFixed;
+				params.createdBy = presenterID;
+				params.notifyComments = 1;
+				params.idx = idx;
+				params.showNotes = 1;
+				thisItem.statusText = 'Saving';
+				params.method = 'saveSlideShow';
+				params.returnFormat = 'plain';
+				slideShowRemoteImportService.send(params);
+			}
+			
+			public function slideShowRemoteImportServiceHandler(event:ResultEvent):void {
+				var idx:Number = event.token.message.body.idx;
+				var thisItem:Object = importDocsDP.getItemAt(idx);
+				var method:String = event.token.message.body.method;
+				switch(method) {
+					case 'saveSlideShow':
+						if (!filesWereUploaded) filesWereUploaded = true;
+						var params:Object = new Object();   
+						params.slideShowID = event.token.message.body.slideshowID;
+						params.method = 'importSlideShow';
+						params.presenterID = presenterID;
+						params.showNotes = event.token.message.body.showNotes;
+						params.returnFormat = 'plain';
+						params.idx = idx;
+						params.pathToPowerPoint = event.token.message.body.filePath;
+						thisItem.statusText = 'Converting';
+						dgImport.dataProvider.refresh();
+						//trace(ObjectUtil.toString(params));
+						slideShowRemoteImportService.send(params);
+						break;
+					case 'importSlideShow':
+						importsCompleted++;
+						thisItem.statusText = 'Import Complete';
+						dgImport.dataProvider.refresh();
+						
+						if (importQSize == importsCompleted) {
+							parentApplication.loadBar.label = '';
+							parentApplication.loadBar.visible = false;
+							importQueueComplete = true;
+						}
+						uploadStatusTxt.text = 'Importing is complete.';
+						
+						
+						break;
+				}
+			}
+			public function authFault(e:Event):void {
+				Alert.show('Authentication Failed');
+			}
+		]]>
+	</mx:Script>
+	<!-- 
+	<mx:HTTPService showBusyCursor="true" id="slideShowRemoteService" url="{slideShowServiceURL}" resultFormat="xml" result="slideShowRemoteServiceHandler(event)" fault="parentApplication.faultHandler(event)" />
+	-->
+	<mx:RemoteObject id="slideShowRemoteService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.slideshows.remoteSlideShowService" showBusyCursor="true">
+		<mx:method name="saveSlideshowInfoAndConvert" result="saveSlideshowInfoAndConvertHandler(event)" fault="parentApplication.faultHandler(event)" />
+	</mx:RemoteObject>
+
+	<!-- a bit wonky, but i'm duplicating the service so i can handle imports separately - how do you spell separately?  -->
+	<mx:HTTPService showBusyCursor="true" id="slideShowRemoteImportService" url="{slideShowServiceURL}" resultFormat="xml" result="slideShowRemoteImportServiceHandler(event)" fault="parentApplication.faultHandler(event)" />
+	
+	<mx:RemoteObject id="googleDocService" endpoint="/flex2gateway/" destination="ColdFusion" source="model.google.remoteGoogleDocsService" showBusyCursor="true">
+		<mx:method name="authenticate" result="googleAuthHandler(event)" fault="authFault(event)" />
+		<mx:method name="getDocumentList" result="googleDocListHandler(event)" fault="parentApplication.faultHandler(event)" />
+		<mx:method name="download" result="googleDownloadHandler(event)" fault="parentApplication.faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:Dissolve id="e1" duration="500" alphaFrom="1.0" alphaTo="0.0" color="#333333" />
+    <mx:Dissolve id="e2" duration="500" alphaFrom="0.0" alphaTo="1.0" color="#333333"/>
+	<mx:Resize duration="500" id="r1" />
+	
+	<mx:HBox width="100%" borderStyle="solid"  paddingBottom="10" paddingTop="10" paddingLeft="10" paddingRight="10" borderColor="#000000">
+		<mx:Text id="uploadStatusTxt" fontSize="12" text="Click 'Browse' below to select a file or several files to upload (PPT, PPS, PDF, ODP, SXI)."  width="547" height="35"/>
+		<!--<mx:ProgressBar id="loadBar" width="300" indeterminate="true" label="" visible="false" labelPlacement="right" />-->
+		<mx:Spacer width="100%" />
+		<mx:Button id="viewToggleBtn" label="Go To {uploadWindowViewStack.selectedIndex == 0 ? 'Import' : 'Upload'} Screen" click="{uploadWindowViewStack.selectedIndex == 0 ? uploadWindowViewStack.selectedChild = importView : uploadWindowViewStack.selectedChild = uploadView}" enabled="{!isUploading}" toolTip="{uploadWindowViewStack.selectedIndex == 0 ? 'Import' : 'Upload'}" />
+	</mx:HBox>
+	
+	<mx:ViewStack id="uploadWindowViewStack" width="100%" height="100%" selectedIndex="0" >
+		<mx:VBox id="uploadView" width="100%" height="100%" hideEffect="e1" showEffect="e2" show="{uploadStatusTxt.text = 'Click \'Browse\' below to select a file or several files to upload (PPT, PPS, PDF, ODP, SXI).'}">
+			<mx:HBox width="100%" height="100%" id="uploadContainer" horizontalGap="{dgFiles.selectedIndex != -1 ? 10 : 0}">
+				<mx:VBox height="100%" width="100%">
+					<mx:DataGrid id="dgFiles" width="100%" height="100%" verticalAlign="middle" dataProvider="{fileArr}" allowMultipleSelection="true" paddingBottom="0" paddingTop="0" editable="true" click="{isUploading ? dgFiles.selectedIndex = -1 : ''}">
+							<mx:columns>
+								<mx:DataGridColumn headerText="File Name" dataField="name" width="{editUploadFileContainer.width &gt; 0 ? 100 : 250}" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" editable="false" />
+								<!-- <mx:DataGridColumn headerText="File Type" dataField="type" sortable="false"/> -->
+								<!--
+								<mx:DataGridColumn headerText="File Size" dataField="size" labelFunction="bytesToKilobytes" width="50" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.UploadGridHeaderRenderer" editable="false" />
+								 
+								<mx:DataGridColumn headerText="Auto Publish?" id="autoPublish" itemRenderer="com.slidesix.AutoPublishRenderer" width="65" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.UploadGridHeaderRenderer" editable="false" />
+								<mx:DataGridColumn headerText="Show Notes?" id="showNotes" itemRenderer="com.slidesix.ShowNotesRenderer" width="75" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.UploadGridHeaderRenderer" editable="false" />
+								<mx:DataGridColumn headerText="Password (For Private Presentations)" id="importPassword" itemRenderer="com.slidesix.PasswordRenderer" width="125" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.UploadGridHeaderRenderer" rendererIsEditor="true" editable="true" dataField="password" />
+								<mx:DataGridColumn headerText="Repeat Password" id="repeatImportPassword" itemRenderer="com.slidesix.RepeatPasswordRenderer" width="100" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.UploadGridHeaderRenderer" rendererIsEditor="true" editable="true" dataField="repeatPassword" />
+								-->
+								<mx:DataGridColumn headerText="Status" id="statusText" dataField="statusText" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" editable="false" width="{editUploadFileContainer.width &gt; 0 ? 100 : 250}" />
+								<mx:DataGridColumn headerText="Progress" id="progress" dataField="uploadProgress" itemRenderer="com.slidesix.renderers.UploadProgressRenderer" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" editable="false" width="{editUploadFileContainer.width &gt; 0 ? 100 : 300}" />
+							</mx:columns>
+						</mx:DataGrid>
+				</mx:VBox>
+			
+				<mx:VBox height="100%" id="editUploadFileContainer" width="{dgFiles.selectedIndex == -1 ? 0 : (uploadContainer.width * .60)}" resizeEffect="r1">
+					<mx:Panel width="100%" height="225" title="{dgFiles.selectedIndex == -1 ? 'Choose A File To Edit' : dgFiles.selectedItem.name}" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10">
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Title*" width="110" />
+							<mx:VBox width="285">
+								<mx:TextInput id="titleInput" text="{dgFiles.selectedItem.title}" change="{dgFiles.selectedItem.title = titleInput.text}" width="100%" />
+								<mx:Text width="285" text="Ex: 'SlideSix - Global Presentation Domination'" />
+							</mx:VBox>
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Description*" width="110" />
+							<mx:VBox width="285">
+								<mx:TextArea id="abstractInput" height="75" text="{dgFiles.selectedItem.abstract}" change="{dgFiles.selectedItem.abstract = abstractInput.text}" width="100%" />
+								<mx:Text width="285" text="Good descriptions help people find your presentation" />
+							</mx:VBox>
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Password" width="110" />
+							<mx:VBox width="285">
+								<mx:TextInput id="passwordInput" text="{dgFiles.selectedItem.password}" change="{dgFiles.selectedItem.password = passwordInput.text}" width="100%" displayAsPassword="true" />
+								<mx:Text width="285" text="Enter A Password If You Want To Make This Presentation Private" fontWeight="bold" />
+							</mx:VBox>
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Repeat Password" width="110" />
+							<mx:VBox width="285">
+								<mx:TextInput id="repeatPasswordInput" text="{dgFiles.selectedItem.repeatPassword}" change="{dgFiles.selectedItem.repeatPassword = repeatPasswordInput.text}" width="100%" displayAsPassword="true" />
+								<!-- <mx:Text text="Repeat Password (If Entered)" /> -->
+							</mx:VBox>
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Tags" width="110" />
+							<mx:VBox width="285">
+								<mx:TextInput id="tagsInput" text="{dgFiles.selectedItem.tags}" change="{dgFiles.selectedItem.tags = tagsInput.text}" width="100%" />
+								<mx:Text width="285" text="Tags make your presentation easy to find.  Separate each by a comma." />
+							</mx:VBox>
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="" width="110" />
+							<mx:VBox width="285">
+								<mx:CheckBox id="showNotesInput" selected="{dgFiles.selectedItem.showNotes == true ? true : false}" width="80%" label="Show Imported Notes To The Public?" click="dgFiles.selectedItem.showNotes = !dgFiles.selectedItem.showNotes" />
+							</mx:VBox>
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="" width="110" />
+							<mx:VBox width="285">
+								<mx:CheckBox id="autoPublishInput" selected="{dgFiles.selectedItem.autoPublish == true ? true : false}" width="80%" label="Auto Publish This Presentation?" click="dgFiles.selectedItem.autoPublish = !dgFiles.selectedItem.autoPublish" />
+							</mx:VBox>
+						</mx:HBox>
+					</mx:Panel>
+				</mx:VBox>
+			</mx:HBox>
+			<mx:HBox width="100%" borderStyle="solid"  paddingBottom="10" paddingTop="10" paddingLeft="10" paddingRight="10" borderColor="#000000">
+				<mx:Button id="btnBrowse" label="Browse" click="onBrowse(event)" icon="@Embed('../../assets/add.png')" alpha="{btnBrowse.enabled ? 1.0 : 0.5}" enabled="{!isUploading}" toolTip="{btnBrowse.enabled ? 'Choose presentation file(s) to upload' : ''}" />
+				<mx:Button id="btnRemove" label="Remove" click="onRemove(event)" icon="@Embed('../../assets/delete.png')" enabled="{dgFiles.selectedIndex &gt; -1 &amp;&amp; !isUploading}" alpha="{btnRemove.enabled ? 1.0 : 0.5}" toolTip="{btnRemove.enabled ? 'Remove presentation(s) from upload queue' : ''}" />
+				<mx:Spacer width="100%"/>
+				<mx:Button id="btnUpload" label="Upload Now" click="onUpload(event)" icon="@Embed('../../assets/image_add.png')" enabled="{dgFiles.dataProvider.length &gt; 0 &amp;&amp; !isUploading}" alpha="{btnUpload.enabled ? 1.0 : 0.5}" toolTip="{btnUpload.enabled ? 'Upload presentations' : ''}" />
+			</mx:HBox>
+		</mx:VBox>
+		<mx:VBox id="importView" width="100%" height="100%" hideEffect="e1" showEffect="e2" show="{uploadStatusTxt.text = 'Authenticate and choose files to import.'}">
+			<mx:ViewStack id="importViewStack" width="100%" height="100%">
+				<mx:VBox id="loginView" width="100%" height="100%" horizontalAlign="center" verticalAlign="middle" >
+					<mx:Panel width="400" title="Retrieve Presentations To Import">
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Service" width="20%" />
+							<mx:ComboBox dataProvider="{importOptions}" id="importService" prompt="Choose Service" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Username" width="20%" />
+							<mx:TextInput id="iUsername" text="" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Password" width="20%" />
+							<mx:TextInput id="iPassword" text="" width="80%" displayAsPassword="true" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="" width="20%" />
+							<mx:Button click="importAuthenticate(event)" label="Authenticate" width="80%" />
+						</mx:HBox>
+					</mx:Panel>
+					
+				</mx:VBox>
+				<mx:VBox id="importDetailView">
+					<mx:DataGrid id="dgImport" width="100%" height="100%" verticalAlign="middle" dataProvider="{importDocsDP}" allowMultipleSelection="true" paddingBottom="0" paddingTop="0" editable="true">
+						<mx:columns>
+							<mx:DataGridColumn headerText="Import?" id="shouldImport" itemRenderer="com.slidesix.renderers.ImportDocRenderer" width="65" sortable="false" headerWordWrap="true" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" editable="false" />
+							<mx:DataGridColumn headerText="Title" dataField="title" sortable="false" headerWordWrap="true" editable="false" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" />
+							<mx:DataGridColumn headerText="Author" dataField="author" sortable="false" headerWordWrap="true" editable="false" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" />
+							<mx:DataGridColumn headerText="Status" dataField="statusText" sortable="false" headerWordWrap="true" editable="false" headerRenderer="com.slidesix.renderers.UploadGridHeaderRenderer" />
+						</mx:columns>
+					</mx:DataGrid>
+					<mx:HBox width="100%" borderStyle="solid"  paddingBottom="10" paddingTop="10" paddingLeft="10" paddingRight="10" borderColor="#000000">
+						<mx:Button id="btnSelect" label="Select All" click="selectAllImport()" enabled="{importDocsDP.length &gt; 0}" alpha="{btnSelect.enabled ? 1.0 : 0.5}" />
+						<mx:Button id="btnDeselect" label="Deselect All" click="deselectAllImport()" enabled="{importDocsDP.length &gt; 0}" alpha="{btnDeselect.enabled ? 1.0 : 0.5}" />
+						<mx:Button id="btnRefreshImportList" label="Refresh" click="getDocList()" icon="@Embed('../../assets/arrow_refresh.png')" enabled="{dgImport.dataProvider.length &gt; 0 ? true : false}" alpha="{btnRefreshImportList.enabled ? 1.0 : 0.5}" />
+						<mx:Button id="btnBackToLogin" label="Disconnect" click="resetImportState()" icon="@Embed('../../assets/door_out.png')"/>
+						<mx:Spacer width="100%"/>
+						<mx:Button id="btnImport" label="Import Now" click="onImport(event)" icon="@Embed('../../assets/image_add.png')" enabled="{dgImport.dataProvider.length > 0}" alpha="{btnImport.enabled ? 1.0 : 0.5}" />
+					</mx:HBox>
+				</mx:VBox>
+			</mx:ViewStack>
+		</mx:VBox>
+	</mx:ViewStack>
+	
+	
+</mx:TitleWindow>

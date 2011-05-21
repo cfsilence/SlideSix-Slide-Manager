@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="init()" width="100%">
+	<mx:Script>
+		<![CDATA[
+		import flash.events.MouseEvent;
+		public function init():void {
+			showNotesC.selected = true;
+			data.showNotes = true;
+		}
+		public function toggleShowNotes(event:MouseEvent):void {
+			if (data.showNotes == true) {
+				data.showNotes = false;
+			}	
+			else {
+				data.showNotes = true;
+			}
+		}
+		]]>
+	</mx:Script>
+	<mx:HBox verticalGap="0" horizontalGap="0" width="100%" height="100%" horizontalAlign="center">
+		<mx:CheckBox id="showNotesC" selected="{data.showNotes}" click="toggleShowNotes(event)" toolTip="Should notes be shown to the public?  Check to show them, uncheck to keep them private." />
+	</mx:HBox>
+</mx:Canvas>
+

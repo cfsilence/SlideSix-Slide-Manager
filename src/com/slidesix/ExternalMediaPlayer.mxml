@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" creationComplete="setup()" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+
+	<mx:Script>
+		<![CDATA[
+		import flash.display.DisplayObject;
+		import flash.display.Graphics;
+		import flash.display.Sprite;
+		import flash.events.Event;
+		import flash.events.IOErrorEvent;
+		import flash.net.LocalConnection;
+		import flash.system.Security;
+		import mx.controls.Alert;
+		import flash.net.URLRequest;
+		import flash.display.Loader;
+		import flash.events.Event;
+		import flash.events.ProgressEvent;
+		import mx.core.Application;
+		import mx.utils.ObjectUtil;
+		import mx.controls.SWFLoader;
+		import com.enefekt.tubeloc.*;
+		import com.enefekt.tubeloc.event.*;
+		import flash.utils.Timer;
+		import flash.events.TimerEvent;
+		import mx.utils.URLUtil;
+
+		[Bindable] public var externalMediaID:String;
+		[Bindable] public var externalMediaSource:String;
+		[Bindable] public var isPlaying:Boolean = false;
+		
+		//for yt:
+		public var ytPlayer:Movie;
+		public var ytReadyTimer:Timer = new Timer(100, 50);
+		public var vimeoReadyTimer:Timer = new Timer(100, 50);
+		public var playerWidth:int;
+		public var playerHeight:int;
+		
+		
+		//for vimeo:
+		private var vimeoLoader:Loader;
+		private var vimeoRequest:URLRequest;
+		private var vimeoBaseURL:String = 'http://bitcast.vimeo.com/vimeo/swf/moogaloop.swf?clip_id=';
+		private var isVimeoReady:Boolean = false;
+		
+		public function setup():void {
+			playerWidth = this.width;
+			playerHeight = this.height;
+			var host:String = URLUtil.getServerName(Application.application.url);
+			ytPlayer = new Movie();
+			//ytPlayer.developerKey = 'AI39si5sv1tAgZeNzqh_vvoppIktD2DHghl0GqMjAOJB1ekegxFz0fOe-NkUhRE8lFHpYSZMqhSoXN_MO6JoVI-AszxJQ3u84Q';
+			ytPlayer.playerWrapperUrl = 'http://' + host + '/includes/flash/as2_tubeloc.swf';
+			Security.allowDomain(host);
+			ytPlayer.chromeless = true;
+			ytPlayer.visible = false;
+			ytPlayer.percentWidth = 100;
+			ytPlayer.percentHeight = 100;
+			ytContainer.addChild(ytPlayer);
+			ytPlayer.addEventListener('onPlayerReady', onYTReady);
+			ytPlayer.addEventListener('onStateChange', onYTVidLoaded);
+			Security.allowDomain('bitcast.vimeo.com');
+			dispatchEvent(new ExternalMediaPlayerCreatedEvent('playerCreated'));
+		}
+		public function ytPlayerTimerReadyHandler(e:TimerEvent):void {
+			if (ytPlayer.playerReady) {
+				ytPlayer.cueVideoById(externalMediaID);
+				ytReadyTimer.stop();
+				ytReadyTimer.reset();
+			}
+		}
+		public function loadVideo():void {
+			toggleVisible();
+			
+			if (externalMediaSource == 'youtube') {
+				if (!ytPlayer.playerReady) {
+					ytReadyTimer.addEventListener("timer", ytPlayerTimerReadyHandler);
+					ytReadyTimer.start();
+				}
+				else {
+					ytPlayer.cueVideoById(externalMediaID);
+				}
+				
+			}
+			else if (externalMediaSource == 'vimeo') {
+				if (!isVimeoReady) {
+					vimeoContainer.removeAllChildren();
+					vimeoLoader = new Loader();
+					vimeoLoader.contentLoaderInfo.addEventListener(Event.COMPLETE, onVimeoLoaded);
+					vimeoLoader.contentLoaderInfo.addEventListener(ProgressEvent.PROGRESS, onVimeoProgressHandler);
+					vimeoRequest = new URLRequest(vimeoBaseURL + externalMediaID);
+					vimeoLoader.load(vimeoRequest);
+				}
+				else {
+					getVimeo().api_loadVideo(externalMediaID);
+					vimeoReadyTimer.addEventListener("timer", vimeoPlayerTimerReadyHandler);
+					vimeoReadyTimer.start();
+				}
+			}
+			else { }
+			
+		}
+		
+		public function onVimeoLoaded(event:Event):void {
+			var moogaloop:Sprite = new Sprite();
+			moogaloop.x = 0;
+			moogaloop.y = 0;
+			moogaloop.addChild(event.currentTarget.content);
+			var vimeoMask:Sprite = new Sprite();
+			with( vimeoMask.graphics ) {
+				beginFill(0x000000, 1);
+				drawRect(moogaloop.x, moogaloop.y, stage.width, stage.height);
+				endFill();
+			}
+			vimeoContainer.rawChildren.addChild(vimeoMask);
+			moogaloop.mask = vimeoMask;
+			vimeoContainer.rawChildren.addChild(moogaloop);
+			setSize(vimeoContainer.width, vimeoContainer.height);
+
+			vimeoLoader.contentLoaderInfo.removeEventListener(Event.COMPLETE, onVimeoLoaded);
+			vimeoReadyTimer.addEventListener("timer", vimeoPlayerTimerReadyHandler);
+			vimeoReadyTimer.start();
+			
+			isVimeoReady = true;
+		}
+		
+		public function vimeoPlayerTimerReadyHandler(e:TimerEvent):void {
+			var ready:Boolean = getVimeo().player_loaded;
+			
+			if (ready) {
+				dispatchEvent(new ExternalMediaPlayerReadyEvent('playerReady'));	
+				dispatchEvent(new ExternalMediaPlayerReadyEvent('mediaReady'));
+				vimeoReadyTimer.stop();
+				vimeoReadyTimer.reset();
+			}
+		}
+		
+		private function onYTReady(event:Event):void {
+			dispatchEvent(new ExternalMediaPlayerReadyEvent('playerReady'));
+		}
+		
+		private function onYTVidLoaded(e:MovieStateChangeEvent):void {
+			dispatchEvent(new ExternalMediaPlayerReadyEvent('mediaReady'));
+		}
+	
+		public function dispose():void {
+			ytContainer.visible = false;
+			vimeoContainer.visible = false;
+			stop();
+			if (externalMediaSource == 'youtube') {
+				ytPlayer.clearVideo();
+			}
+			else if (externalMediaSource == 'vimeo') {		
+				vimeoContainer.removeAllChildren();
+			}
+			else { }
+		}
+		
+		public function toggleVisible():void {
+			if (externalMediaSource == 'youtube') {
+				ytContainer.height = container.height;
+				ytContainer.width = container.width;
+				vimeoContainer.height = 0;
+				vimeoContainer.width = 0;
+				ytContainer.visible = true;
+				vimeoContainer.visible = false;
+			}
+			else if (externalMediaSource == 'vimeo') {
+				vimeoContainer.height = container.height;
+				vimeoContainer.width = container.width;
+				ytContainer.height = 0;
+				ytContainer.width = 0;
+				ytContainer.visible = false;
+				vimeoContainer.visible = true;
+			}
+		}
+		
+		public function getVimeo():Object {
+			return vimeoLoader.content as Object;
+		}
+
+		public function onVimeoProgressHandler(e:ProgressEvent):void{
+			var percent:Number = e.bytesLoaded / e.bytesTotal;
+		}
+	
+		public function play():void { 
+			isPlaying = true;
+			if (externalMediaSource == 'youtube') {
+				ytPlayer.playVideo();
+			}
+			else if (externalMediaSource == 'vimeo') {
+				try {
+					getVimeo().api_enableHDEmbed();
+				}
+				catch (e:Error) {
+					
+				}
+				getVimeo().api_play();
+			}
+			else{}
+		}
+	
+		public function pause():void { 
+			if (isPlaying) {
+				isPlaying = false;
+				if (externalMediaSource == 'youtube') {
+					ytPlayer.pauseVideo();
+				}
+				else if (externalMediaSource == 'vimeo') {
+					getVimeo().playbar.playButton.toggle();
+				}
+				else{}
+			}
+		}
+		
+		public function stop():void { 
+			
+			if (externalMediaSource == 'youtube') {
+				//gotta trick yt - it totally kills the video if i call stopVideo()
+				ytPlayer.seekTo(0, false);
+				ytPlayer.pauseVideo();
+			}
+			else if (externalMediaSource == 'vimeo') {
+				if (isPlaying) {
+					getVimeo().api_unload();
+				}
+			}
+			else { }
+			isPlaying = false;
+		}
+		
+		public function setSize(w:Number,h:Number):void { 
+			if (externalMediaSource == 'youtube') {
+				ytPlayer.setSize(w, h);
+				ytPlayer.visible = true;
+			}
+			else if (externalMediaSource == 'vimeo') {
+				var g:DisplayObject = vimeoContainer.rawChildren.getChildAt(0);
+				g.width = w;
+				g.height = h;
+				getVimeo().api_setSize(w, h)
+			}
+			else{}
+		}
+		//to seek vimeo: getVimeo().api_seekTo(number);
+		]]>
+	</mx:Script>
+
+	<mx:Metadata>
+        [Event(name="playerReady", type="com.slidesix.ExternalMediaPlayerReadyEvent")]
+		[Event(name="mediaReady", type="com.slidesix.ExternalMediaReadyEvent")]
+		[Event(name="playerCreated", type="com.slidesix.ExternalMediaPlayerCreatedEvent")]
+    </mx:Metadata>
+
+	<mx:Canvas id="container" height="100%" width="100%">
+		<mx:VBox top="0" left="0" width="100%" height="100%" id="vimeoContainer" horizontalAlign="center" verticalAlign="middle" visible="false">
+		</mx:VBox>
+		<mx:VBox top="0" left="0" width="100%" height="100%" id="ytContainer" horizontalAlign="center" verticalAlign="middle" visible="false">
+		</mx:VBox>
+	</mx:Canvas>
+</mx:VBox>

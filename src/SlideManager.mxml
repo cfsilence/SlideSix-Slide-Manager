@@ -1,0 +1,2687 @@
+﻿<?xml version="1.0"?>
+<mx:Application xmlns:u="*" xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="getAppConfig()" height="90%" width="100%" backgroundColor="#000000" xmlns:i="com.slidesix.*" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" horizontalScrollPolicy="off" horizontalAlign="center" layout="vertical" xmlns:sm="com.StretchMedia.*">
+	<mx:Style source="style/style.css"/>
+	<mx:Style>  
+	 global{  
+		modalTransparencyBlur: 0;
+		modalTransparency: 0.8;
+		modalTransparencyColor: black;
+		modalTransparencyDuration: 500;
+		disabled-overlay-alpha: 0.8;
+		background-disabled-color: black;
+	}
+  
+ 	.slideImage{
+	brokenImageSkin: Embed(source='assets/no_image.png');
+	}
+	.externalMediaThumbImage{
+		brokenImageSkin: Embed(source='assets/no_image_140_100.png');
+	}
+	.groupImage{
+		brokenImageSkin: Embed(source='assets/no_image_150_150.png')
+	} 
+	.searchContainer{
+		paddingTop: 10;
+		paddingBottom: 10;
+		paddingLeft: 10;
+		paddingRight: 10;
+	}
+	.headerBtn{
+		color: #ffffff;
+	} 
+
+	</mx:Style>
+	<mx:Script>
+		<![CDATA[
+			import com.adobe.crypto.MD5;
+			import com.adobe.utils.DateUtil;
+			import com.slidesix.*;
+			import com.slidesix.vo.events.EventMembership;
+			import com.slidesix.vo.events.SlideSixEvent;
+			import com.slidesix.vo.groups.Group;
+			import com.slidesix.vo.groups.GroupMember;
+			import com.slidesix.vo.slideshows.*;
+			import com.slidesix.vo.users.User;
+			
+			import mx.collections.ArrayCollection;
+			import mx.collections.Sort;
+			import mx.collections.SortField;
+			import mx.controls.Alert;
+			import mx.controls.Menu;
+			import mx.events.CloseEvent;
+			import mx.events.DynamicEvent;
+			import mx.events.FlexEvent;
+			import mx.events.MenuEvent;
+			import mx.events.ScrollEvent;
+			import mx.managers.CursorManager;
+			import mx.managers.PopUpManager;
+			import mx.messaging.ChannelSet;
+			import mx.messaging.Consumer;
+			import mx.messaging.channels.AMFChannel;
+			import mx.messaging.events.MessageEvent;
+			import mx.messaging.messages.IMessage;
+			import mx.rpc.events.ResultEvent;
+			import mx.utils.ObjectUtil;
+			import mx.utils.UIDUtil;
+			import mx.utils.URLUtil;
+
+		private var connection:NetConnection = new NetConnection();
+		private var stream:NetStream;
+		private var video:Video;
+		private var videoAdded:Boolean;
+		private var rtmpURL:String;
+		private var cam:Camera;
+		private var mic:Microphone;
+			
+		public var host:String;
+		public var rtmpBaseURL:String;
+		public var appConfig:Object;
+		public var managerMediaWindow:ManagerMediaWindow;
+		public var externalMediaSearchWindow:ExternalMediaSearchWindow;
+		public var externalMediaPlayWindow:ExternalMediaPlayWindow;
+		public var notesWindow:SlideNotesWindow;
+		public var introWindow:IntroWindow
+		public var madePublicOnSave:Boolean = false;
+		public var publishedOnSave:Boolean = false;
+		//removed 'pptx' on 4/6/08 :(
+		public var acceptedExtensions:Array = new Array('ppt', 'pptx', 'pps', 'pdf', 'mov', 'sxi', 'odp', 'moov', 'pdf ', 'sld8', 'sld3');
+		public var acceptedImageExtensions:Array =  new Array('jpg','jpeg','png', 'pngf' ,'gif', 'giff');
+		public var slideShowAttachment:FileReference = new FileReference();
+		public var groupImage:FileReference = new FileReference();
+		public var eventImage:FileReference = new FileReference();
+		public var eventBannerImage:FileReference = new FileReference();
+		public var userImage:FileReference = new FileReference();
+		public var logoutURL:String;
+		public var uploadWindow:UploadWindow;
+		public var welcomeWindowShown:Boolean = false;
+		public var firstPresoUploadedWindowShown:Boolean = false;
+		public var introSlideViewWindowShown:Boolean = false;
+		public var helpWindow:HelpWindow;
+		public var groupHelpWindowShown:Boolean = false;
+		public var eventHelpWindowShown:Boolean = false;
+		public var importGatewayConsumer:Consumer;
+			
+		[Bindable] public var storeBaseURL:String;
+		[Bindable] public var channelSet:ChannelSet;
+		[Bindable] public var baseURL:String;
+		[Bindable] public var attachmentBaseURL:String;
+		[Bindable] public var sessionProxyURL:String;
+		[Bindable] public var userServiceURL:String;
+		[Bindable] public var myself:String;
+		[Bindable] public var slideShowServiceURL:String;
+		[Bindable] public var slideServiceURL:String;
+		[Bindable] public var groupServiceURL:String;
+		[Bindable] public var eventServiceURL:String;
+		[Bindable] public var imageServiceURL:String;
+		[Bindable]
+		[ArrayElementType("com.slidesix.vo.groups.Group")]
+		[Bindable] public var groups:Array;
+		[ArrayElementType("com.slidesix.vo.groups.GroupMember")]	
+		[Bindable] public var pendingGroupMembers:Array;
+		[Bindable]
+		[ArrayElementType("com.slidesix.vo.events.Event")]
+		[Bindable] public var events:Array;
+		[ArrayElementType("com.slidesix.vo.events.EventMember")]	
+		[Bindable] public var pendingEventMembers:Array;
+		
+		[Bindable]
+		[ArrayElementType("com.slidesix.vo.slideshows.Slideshow")]			
+		public var slideshows:ArrayCollection;
+		[Bindable]
+		[ArrayElementType("com.slidesix.vo.slideshows.Slide")]
+		public var slides:Array;
+		[ArrayElementType("com.slidesix.vo.slideshows.Comment")]
+		[Bindable] public var slideShowComments:Array;
+		[Bindable] public var initialSlideWidth:Number;
+		[Bindable] public var yesterday:Date;
+		
+		[Bindable] [Embed(source = 'assets/help.png')] private var helpImg:Class;
+		[Bindable] [Embed(source = 'assets/comment.png')] private var commentImg:Class;
+		[Bindable] [Embed(source = 'assets/dashboard_logo.png')] private var logo:Class;
+		[Bindable] [Embed(source = 'assets/dashboard_logo_light_shadow.png')] private var logoAlt:Class;
+		[Bindable] [Embed(source = 'assets/key.png')] private var keyImg:Class;
+		[Bindable] [Embed(source = 'assets/slides.png')] private var slidesImg:Class;
+		[Bindable] [Embed(source = 'assets/upload.png')] private var uploadImg:Class;
+		[Bindable] [Embed(source = 'assets/powerpoint.png')] private var powerpointImg:Class;
+		[Bindable] [Embed(source = 'assets/presos.png')] private var presosImg:Class;
+		[Bindable] [Embed(source = 'assets/delete.png')] private var deleteImg:Class;
+		[Bindable] [Embed(source = 'assets/disk.png')] private var saveImg:Class;
+		[Bindable] [Embed(source = 'assets/view_attach.png')] private var viewAttachImg:Class;
+		[Bindable] [Embed(source = 'assets/film_add.png')] private var mediaImg:Class;
+		[Bindable] [Embed(source = 'assets/webcam.png')] private var webcamImg:Class;
+		[Bindable] [Embed(source = 'assets/monitor.png')] private var monitorImg:Class;
+		[Bindable] [Embed(source = 'assets/monitor_go.png')] private var viewPresoImg:Class;
+		[Bindable] [Embed(source = 'assets/note_edit.png')] private var notesImg:Class;
+		[Bindable] [Embed(source = 'assets/photo_add.png')] private var picImg:Class;
+		[Bindable] [Embed(source = 'assets/fullscreen.png')] private var fullscreenImg:Class;
+		[Bindable] [Embed(source = 'assets/exit_fullscreen.png')] private var exitFullscreenImg:Class;
+		[Bindable] public var isInFullScreen:Boolean = false;
+		[Bindable] public var currentUser:User;
+		[Bindable] public var isAnalyticsEnabled:Boolean = false;
+		[Bindable] [Embed(source = 'assets/attach.png')] public var attachmentImg:Class;
+		[Bindable] [Embed(source = 'assets/cog.png')] private var menuTriggerImg:Class;
+		[Bindable] [Embed(source = 'assets/key_delete.png')] public var makePublicImg:Class;
+		[Bindable] [Embed(source = 'assets/wand.png')] public var publishImg:Class;
+		[Bindable] [Embed(source = 'assets/chart.png')] public var chartImg:Class;
+		[Bindable] [Embed(source = 'assets/group.png')] public var collabImg:Class;
+		
+		[Bindable] [Embed(source = 'assets/delete_disabled.png')] public var deleteImgDisabled:Class;
+		[Bindable] [Embed(source = 'assets/view_attach_disabled.png')] public var viewAttachImgDisabled:Class;
+		[Bindable] [Embed(source = 'assets/key_delete_disabled.png')] public var makePublicImgDisabled:Class;
+		[Bindable] [Embed(source = 'assets/wand_disabled.png')] public var publishImgDisabled:Class;
+		[Bindable] [Embed(source = 'assets/chart_disabled.png')] public var chartImgDisabled:Class;
+		[Bindable] [Embed(source = 'assets/group_disabled.png')] public var collabImgDisabled:Class;
+		
+		
+        private var point1:Point = new Point();
+        private var slideMenu:Menu;
+		[Bindable] 
+		public var presoSortOptions:ArrayCollection = new ArrayCollection([ 
+			{label:'Date Created', data:'CREATEDON' }, 
+			{label:'Date Published', data:'LASTBUILDDATE'}, 
+			{label:'Title', data:'TITLE'}, 
+            {label:'Views', data:'NUMVIEWS' },
+			{label:'Embedded Views', data:'NUMEMBEDDEDVIEWS' },
+			{label:'Favorites', data:'NUMFAVORITES' },
+			{label:'Comments', data:'NUMCOMMENTS'},
+			{label:'Rank', data:'AVGRANK'}
+			
+		]);
+		
+		public var helpVideos:Object = {
+			'uploadHelp':{'id':'qXXFyp1OafM','source':'youtube'},
+			'presoHelp':{'id':'FABHcq8G0A0','source':'youtube'},
+			'slideHelp':{'id':'bGKbyOh5OmE','source':'youtube'},
+			'profileHelp':{'id':'Sp-WDY8vKnk','source':'youtube'},
+			'groupHelp':{'id':'vaC3Qmzz0VM','source':'youtube'}
+		};
+			
+		public function getAppConfig():void{
+			appConfigService.getConfig.send();
+		}
+			
+		public function getAppConfigHandler(e:ResultEvent):void{
+			appConfig = e.result;
+			storeBaseURL = appConfig.storeBaseURL;
+			Security.loadPolicyFile(storeBaseURL + '/crossdomain.xml');
+			init();
+		}
+		
+		public function init():void {
+			host = URLUtil.getServerName(Application.application.url);
+			baseURL = 'http://' + host + '/';
+			logoutURL = baseURL + 'index.cfm?event=user.logout';
+			rtmpBaseURL = 'rtmp://' + host + '/messageRecorder/';
+			sessionProxyURL = baseURL + 'services/users/SessionProxy.cfc';
+			
+			userServiceURL = baseURL + 'services/users/RemoteUserService.cfc';
+			myself = baseURL + 'index.cfm?event=';
+			attachmentBaseURL = myself + 'attachment.download&slideShowID=';
+			slideShowServiceURL = baseURL + 'services/slideshows/RemoteSlideshowService.cfc';
+			slideServiceURL = baseURL + 'model/slides/remoteSlideService.cfc';
+			groupServiceURL = baseURL + 'services/groups/RemoteGroupService.cfc';
+			eventServiceURL = baseURL + 'services/events/RemoteEventService.cfc';
+			imageServiceURL = baseURL + 'model/images/remoteImageService.cfc?jsessionid=' + this.parameters.jsessionid;
+			var d:Date = new Date();
+			yesterday = addDays(d,-1);
+			
+			//set up channel
+			initChannelSet();
+			
+			//get the current user
+			getUser();
+			
+			//introWindow = IntroWindow(PopUpManager.createPopUp(this, IntroWindow, true));
+			//introWindow.visible = false;
+			//PopUpManager.centerPopUp(introWindow);
+			
+			managerMediaWindow = ManagerMediaWindow(PopUpManager.createPopUp(this, ManagerMediaWindow, false));
+			managerMediaWindow.visible = false;
+			managerMediaWindow.rtmpBaseURL = rtmpBaseURL;
+			
+			notesWindow = SlideNotesWindow(PopUpManager.createPopUp(this, SlideNotesWindow, false));
+			PopUpManager.centerPopUp(notesWindow);
+			notesWindow.visible = false;
+			
+			slideShowsDisplay.addEventListener(ScrollEvent.SCROLL, hideMenu);
+			
+		}
+			
+		public function initChannelSet():void{
+			channelSet = new ChannelSet();
+			var mChannel:AMFChannel = new AMFChannel('cf-polling-amf', 'http://' + host + '/flex2gateway/cfamfpolling');
+			mChannel.enableSmallMessages = false;
+			channelSet.addChannel(mChannel);
+		}
+		
+		private function getIcon(item:Object):Class{
+   			var enabled:Boolean = true;
+   			var e:String = item.@eventName;
+   			if(item.hasOwnProperty('@enabled') && item.@enabled.toString() != 'true'){
+   				enabled = false;
+   			}
+   			var img:Class;
+   			
+   			switch(e){
+         		case 'view':
+         			img = monitorImg;
+         			break;
+         		case 'slides':
+         			img = slidesImg;
+         			break;
+     			case 'delete':
+     				enabled ? img = deleteImg : img = deleteImgDisabled;
+     				break;
+     			case 'addAttachment':
+     				img = attachmentImg;
+     				break;
+     			case 'viewAttachment':
+     				enabled ? img = viewAttachImg : img = viewAttachImgDisabled;
+     				break;
+     			case 'deleteAttachment':
+     				enabled ? img = deleteImg : img = deleteImgDisabled;
+     				break;
+ 				case 'makePublic':
+     				enabled ? img = makePublicImg : img = makePublicImgDisabled;
+     				break;
+ 				case 'publish':
+     				enabled ? img = publishImg : img = publishImgDisabled;
+     				break;
+ 				case 'analytics':
+     				enabled ? img = chartImg : img = chartImgDisabled;
+     				break;
+ 				case 'dedicatedRoom':
+					enabled ? img = collabImg : img = collabImgDisabled;
+     				break;
+         	}
+         	return img;
+   		}
+   		 
+        public function showMenu(x:Number,y:Number):void {
+            slideMenu = Menu.createMenu(this, slideMenuData, false);
+            slideMenu.setStyle('disabledColor', '#606060');
+            slideMenu.labelField = "@label";
+            slideMenu.iconFunction = getIcon;
+            slideMenu.addEventListener("itemClick", slideMenuHandler);
+            //Alert.show(a);
+            point1.x = x + 160;//e.currentTarget.x;
+            point1.y = y + 120; //e.currentTarget.y;  
+                      
+            point1 = slideShowsDisplay.localToGlobal(point1);
+			
+			if(point1.y > 300) point1.y = 300;
+			 
+            slideMenu.show(point1.x + 10, point1.y + 10);
+        }
+        
+        public function hideMenu(event:ScrollEvent):void{
+			if(slideMenu != null) slideMenu.hide();
+        }
+        private function slideMenuHandler(event:MenuEvent):void  {
+         	var e:String = event.item.@eventName;
+         	
+         	switch(e){
+         		case 'view':
+         			openPresoViewWindow();
+         			break;
+         		case 'slides':
+         			goToSlideView();
+         			break;
+     			case 'delete':
+     				confirmPresoDelete(new MouseEvent(MouseEvent.CLICK));
+     				break;
+     			case 'addAttachment':
+     				selectAttachment(new MouseEvent(MouseEvent.CLICK));
+     				break;
+     			case 'viewAttachment':
+     				viewAttachment(new MouseEvent(MouseEvent.CLICK));
+     				break;
+     			case 'deleteAttachment':
+     				deleteAttachmentClicked(new MouseEvent(MouseEvent.CLICK));
+     				break;
+ 				case 'makePublic':
+     				savePresoClicked(false,true);
+     				break;
+ 				case 'publish':
+     				savePresoClicked(true,false);
+     				break;
+ 				case 'analytics':
+     				openAnalyticsWindow();
+     				break;
+ 				case 'dedicatedRoom':
+					var urlRequest:URLRequest = new URLRequest('/collaborate/'+currentUser.USERNAME);
+					navigateToURL(urlRequest, '_blank');
+     				break;
+         	}
+        }
+        
+		public function timerHandler(event:TimerEvent):void {
+            var params:Object = new Object();
+            params.method = 'getInactivity';
+			params.returnFormat = 'plain';
+			params.jsessionid = this.parameters.jsessionid;
+			sessionProxyHTTPService.send(params);
+        }
+
+		public function showMediaWindow():void {
+			managerMediaWindow.alias = slideShowsDisplay.selectedItem.ALIAS;
+			managerMediaWindow.visible = true;	
+			if (slideDisplay.selectedItem.HASMEDIA) {
+				managerMediaWindow.mediaStatus('Loading existing media for slide  \'' + slideDisplay.selectedItem.TITLE + '\'');
+			}
+			else {
+				managerMediaWindow.mediaStatus('No media exists for slide  \'' + slideDisplay.selectedItem.TITLE + '\'');
+			}
+		}
+		
+		public function showExternalMediaSearchWindow():void {
+			if (externalMediaSearchWindow == null) {
+				externalMediaSearchWindow = ExternalMediaSearchWindow(PopUpManager.createPopUp(this, ExternalMediaSearchWindow, true));
+			}
+			
+			externalMediaSearchWindow.externalMediaID = slideDisplay.selectedItem.EXTERNALMEDIAID;
+			externalMediaSearchWindow.externalMediaSource = slideDisplay.selectedItem.EXTERNALMEDIASOURCE;
+			externalMediaSearchWindow.slideID = slideDisplay.selectedItem.ID;
+			
+			PopUpManager.centerPopUp(externalMediaSearchWindow);
+			externalMediaSearchWindow.visible = true;
+			externalMediaSearchWindow.onShow();
+		}
+		
+		public function showExternalMediaPlayWindow(id:String, source:String):void {
+			if (externalMediaPlayWindow == null) {
+				externalMediaPlayWindow = ExternalMediaPlayWindow(PopUpManager.createPopUp(this, ExternalMediaPlayWindow, true));
+			}
+			
+			externalMediaPlayWindow.externalMediaID = id;
+			externalMediaPlayWindow.externalMediaSource = source;
+			externalMediaPlayWindow.visible = true;
+			//externalMediaPlayWindow.loadMedia();
+			PopUpManager.bringToFront(externalMediaPlayWindow);
+			PopUpManager.centerPopUp(externalMediaPlayWindow);
+		}
+		
+		public function showNotesWindow():void {
+			if (notesWindow.visible == false) {
+				notesWindow.visible = true;
+				notesWindow.slideID = slideDisplay.selectedItem.ID;
+				notesWindow.slideServiceURL = slideServiceURL;
+				notesWindow.existingNotes = slideDisplay.selectedItem.NOTES;
+				notesWindow.showNotes = slideDisplay.selectedItem.SHOWNOTES == '1' ? true : false;
+			}
+			else {
+				notesWindow.visible = false;
+			}
+		}
+		
+		public function openAnalyticsWindow():void {
+			var analyticsWindow:AnalyticsWindow = AnalyticsWindow(PopUpManager.createPopUp(this, AnalyticsWindow, true));
+			analyticsWindow.alias = slideShowsDisplay.selectedItem.alias;
+			PopUpManager.centerPopUp(analyticsWindow);	
+		}
+		
+		public function openPresoViewWindow():void {
+			var viewURL:String = baseURL + 'view/' + slideShowsDisplay.selectedItem.ALIAS;
+			var urlRequest:URLRequest = new URLRequest(viewURL);
+			navigateToURL(urlRequest, '_blank');
+			
+		}
+		
+		public function viewProfile():void {
+			var viewURL:String = baseURL + 'user/' + currentUser.USERNAME;
+			var urlRequest:URLRequest = new URLRequest(viewURL);
+			navigateToURL(urlRequest, '_blank');
+		}
+		public function goToSlideSix():void {
+			var viewURL:String = baseURL;
+			var urlRequest:URLRequest = new URLRequest(viewURL);
+			navigateToURL(urlRequest, '_self');
+		}
+		
+		public function viewEvent():void {
+			var viewURL:String = baseURL + 'event/' + eventDisplay.selectedItem.ALIAS;
+			var urlRequest:URLRequest = new URLRequest(viewURL);
+			navigateToURL(urlRequest, '_blank');
+		}
+		
+		public function viewGroup():void {
+			var viewURL:String = baseURL + 'group/' + groupDisplay.selectedItem.ALIAS;
+			var urlRequest:URLRequest = new URLRequest(viewURL);
+			navigateToURL(urlRequest, '_blank');
+		}
+		
+		public function openUploadWindow():void {
+			if(uploadWindow == null){
+				uploadWindow = UploadWindow(PopUpManager.createPopUp(this, UploadWindow, true));
+				PopUpManager.centerPopUp(uploadWindow);
+				uploadWindow.visible = false;
+			}
+			uploadWindow.baseURL = baseURL;
+			uploadWindow.slideShowServiceURL = slideShowServiceURL;
+			uploadWindow.currentUser = currentUser;
+			uploadWindow.presenterID = currentUser.ID;
+			uploadWindow.cfid = this.parameters.cfid;
+			uploadWindow.cftoken = this.parameters.cftoken;
+			uploadWindow.jsessionid = this.parameters.jsessionid;
+			uploadWindow.acceptedExtensions = acceptedExtensions;
+			uploadWindow.uploadURL = slideShowServiceURL + '?method=uploadSlideshow&jsessionid=' + this.parameters.jsessionid;
+			
+			uploadWindow.uploadWindowViewStack.selectedChild = uploadWindow.uploadView;
+			uploadWindow.visible = true;
+		}
+		public function openImportWindow():void {
+			uploadWindow.uploadWindowViewStack.selectedChild = uploadWindow.importView;
+			uploadWindow.visible = true;
+		}
+			
+		public function sessionProxyHTTPServiceHandler(event:ResultEvent):void {
+			var method:String = event.token.message.body.method;
+			switch(method) {
+				case 'getInactivity':
+					var inactivity:Number = event.result.toString();
+					//Alert.show('inactive for ' + inactivity);
+					if (inactivity >= 19) {
+						logout();
+					}
+					break;
+			}
+			
+		}
+			
+		public function getCurrentUserHandler(event:ResultEvent):void {
+			var method:String = event.token.message.body[0].method;
+			var r:Object = event.result as Object;
+			currentUser = r.USER as User;
+			switch(method) {
+				case 'initUser':
+					try{
+						if(this.parameters.upload.toLowerCase() == 'true'){
+							openUploadWindow();
+						}
+					}
+					catch(e:Error){
+					}
+					if(currentUser.ID != 0){
+						//establish the consumer that will listen for messages sent from coldfusion
+						importGatewayConsumer = new Consumer();
+						importGatewayConsumer.destination = 'ColdFusionGateway';
+						importGatewayConsumer.subtopic = currentUser.ID + '-management_console_gateway';
+						importGatewayConsumer.channelSet = channelSet;
+						importGatewayConsumer.addEventListener(MessageEvent.MESSAGE, mgmtGatewayHandler);
+						importGatewayConsumer.subscribe();
+						
+						getSlideShows();
+						getGroups();
+						getEvents();
+						showUploadBtn.enabled = true;												
+						var sessionTimer:Timer = new Timer(60000, 0);
+						sessionTimer.addEventListener("timer", timerHandler);
+						sessionTimer.start();
+					}
+					else{
+						Alert.show('You must be logged in to use the Management Console.', 'Error...');
+						this.enabled = false;
+					}
+					break;
+				case 'getProfile':
+					break;
+			}
+			
+		}
+			
+		public function mgmtGatewayHandler(event:MessageEvent):void{
+			var eventMsg:IMessage = event.message;
+			var info:Object = eventMsg.body;
+			
+			switch (info.TYPE) {
+				case 'ImportStatus':
+					var c:Slideshow = info.CONTENT as Slideshow;
+					Alert.show('Presentation Import ('+c.TITLE+') is complete.');
+					for(var s:String in slideshows){
+						var match:Boolean = slideshows[s].ALIAS == c.ALIAS ? true : false;
+						if(match){
+							slideshows.setItemAt(c,s as int);
+							break;
+						}
+						if(!match && s == (slideshows.length-1).toString()){
+							slideshows.addItem(c);
+							slideShowsDisplay.dataProvider.refresh();
+							break;
+						}
+					}
+					break;
+			}
+		}
+		
+		public function logout():void {
+			var urlRequest:URLRequest = new URLRequest(logoutURL);
+			navigateToURL(urlRequest, '_self');	
+		}
+		
+		public function getEvents():void {
+			var confParams:Object = new Object();
+			confParams.userID = currentUser.ID;
+            eventService.listEventsByUserID.send(confParams);
+		}
+		
+		public function getGroups():void {
+			var groupParams:Object = new Object();
+			groupParams.userID = currentUser.ID;
+            groupService.listGroupsByUserID.send(groupParams);
+		}
+		
+		public function getEventPendingMembers():void {
+			var hasPendingMembers:Boolean = eventDisplay.selectedItem.PENDINGMEMBERS > 0;
+			if(eventDisplay.selectedIndex != -1 && hasPendingMembers){
+				var cParams:Object = new Object();
+				cParams.groupID = groupDisplay.selectedItem.ID;
+				cParams.isApproved = 0;
+				eventService.listEventMembershipsByGroupID.send(cParams);	
+			}
+			if(!hasPendingMembers){
+				pendingEventMembers = null;
+				//pendingGroupMembersGrid.dataProvider.refresh();
+				statusMsg.text = 'No Pending Members Exist';
+			}
+		}
+		
+		public function getGroupPendingMembers():void {
+			var hasPendingMembers:Boolean = groupDisplay.selectedItem.PENDINGMEMBERS > 0;
+			if(groupDisplay.selectedIndex != -1 && hasPendingMembers){
+				var groupParams:Object = new Object();
+				groupParams.groupID = groupDisplay.selectedItem.ID;
+				groupParams.isApproved = 0;
+				groupService.listGroupMembershipsByGroupID.send(groupParams);	
+			}
+			if(!hasPendingMembers){
+				pendingGroupMembers = null;
+				//pendingGroupMembersGrid.dataProvider.refresh();
+				statusMsg.text = 'No Pending Members Exist';
+			}
+		}
+		
+		public function openHelpWindow(topic:String):void{
+			if(helpWindow == null){
+				helpWindow = HelpWindow(PopUpManager.createPopUp(this, HelpWindow, true));
+				helpWindow.addEventListener('needVideoEvent', getHelpVideo);
+				helpWindow.visible = false;
+			}
+			helpWindow.contactURL = baseURL + 'index.cfm?event=contact.send';
+			helpWindow.contactFrom = currentUser.FIRSTNAME + ' ' + currentUser.LASTNAME;
+			helpWindow.contactFromID = currentUser.ID as String;
+			helpWindow.contactFromEmail = currentUser.EMAIL;
+			helpWindow.initialView = topic;
+			helpWindow.visible = true;
+			PopUpManager.centerPopUp(helpWindow);
+		}
+		
+		public function getHelpVideo(e:DynamicEvent):void{
+			var thisVideo:Object = helpVideos[e.topic];
+			showExternalMediaPlayWindow(thisVideo.id, thisVideo.source);
+		}
+			
+		public function getSlideshowsHandler(event:ResultEvent):void{
+			//loadBar.visible = false;
+			statusMsg.text = '';
+			slideshows = new ArrayCollection();
+			var x:Array = event.result as Array;
+			for(var ss:String in x){
+				var s:Slideshow = x[ss] as Slideshow;
+				slideshows.addItem(s);
+			}
+			statusMsg.text = slideshows.length.toString() + ' Presentations Exist';
+			
+			if (slideshows.length == 0 && !welcomeWindowShown) {
+				var welcomeWindow:WelcomeWindow = WelcomeWindow(PopUpManager.createPopUp(this, WelcomeWindow, true));
+				welcomeWindow.addEventListener('needUploadEvent', function():void{
+					openUploadWindow();
+				});
+				welcomeWindow.addEventListener('needHelpEvent', function():void{
+					Alert.show('helpevent');
+					openHelpWindow('helpMenu');
+				});
+				PopUpManager.centerPopUp(welcomeWindow)
+				welcomeWindowShown = true;
+			}
+			if (slideshows.length > 0 && welcomeWindowShown && !firstPresoUploadedWindowShown) {
+				openHelpWindow('presoHelp');
+				firstPresoUploadedWindowShown = true;
+			}
+			sortNew(true);
+		}
+		
+		public function saveSlideshowInfoHandler(event:ResultEvent):void{
+			statusMsg.text = '';
+			//fix up the dataprovider (instead of refreshing all the presos)
+			slideShowsDisplay.selectedItem.TITLE = editSlideShowTitle.text;
+			slideShowsDisplay.selectedItem.ABSTRACT = editAbstract.text;
+			slideShowsDisplay.selectedItem.CREDITNAME = editCreditName.text;
+			slideShowsDisplay.selectedItem.CREDITURL = editCreditURL.text;
+			slideShowsDisplay.selectedItem.NOTIFYCOMMENTS = editNotifyComments.selected ? 1 : 0;
+			slideShowsDisplay.selectedItem.ALLOWCOMMENTS = editAllowComments.selected ? 1 : 0;
+			if (editSlideShowPassword.text.length > 0 && editRepeatPassword.text.length > 0) slideShowsDisplay.selectedItem.PASSWORD = MD5.hash(editRepeatPassword.text);
+			
+			if (publishedOnSave) {
+				slideShowsDisplay.selectedItem.LASTBUILDDATE = new Date();
+			}
+			/* if(editLastBuildDate.selectedDate != null){
+			var d:Date = getPublishedDateTime();
+			var sd:Date = toServerDateTime(d);
+			slideShowsDisplay.selectedItem.lastbuilddate = sd;
+			} */
+			if (editGroupID.selectedIndex != -1) slideShowsDisplay.selectedItem.GROUPNAME = groups[editGroupID.selectedIndex].NAME;
+			trace(ObjectUtil.toString(event));
+			slideShowsDisplay.selectedItem.EVENTIDLIST = event.token.message.body[4];
+			slideShowsDisplay.selectedItem.TAGLIST = editTags.text;
+			statusMsg.text = 'Presentation Saved';
+			
+			slideShowsDisplay.selectedIndex = slideShowsDisplay.selectedIndex;
+			slideShowsDisplay.dispatchEvent(new MouseEvent(MouseEvent.CLICK));
+		}
+			
+		public function deleteAttachmentHandler(event:ResultEvent):void {
+			statusMsg.text = 'Attachment Deleted';
+			slideShowsDisplay.selectedItem.PATHTOATTACHMENT = null;
+			slideShowsDisplay.dataProvider.refresh();
+			slideShowsDisplay.selectedItem = slideShowsDisplay.selectedItem; 
+		}
+			
+		public function listCommentsBySlideshowIDHandler(event:ResultEvent):void {
+			slideShowComments = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var ss:String in x){
+				slideShowComments[ss] = x[ss] as Comment;
+			}
+		}
+			
+		public function deleteCommentByIDHandler(event:ResultEvent):void {
+			slideShowCommentGrid.selectedIndex = 0;
+			slideShowsDisplay.selectedItem.NUMCOMMENTS = slideShowsDisplay.selectedItem.NUMCOMMENTS - 1; 
+			slideShowsDisplay.dataProvider.refresh();
+			slideShowsDisplay.selectedItem = slideShowsDisplay.selectedItem;
+			getComments();
+		}
+			
+		public function deleteSlideshowByIDHandler(event:ResultEvent):void{
+			statusMsg.text = 'Presentation Deleted';
+			for(var x:Number=0; x<slideshows.length; x++){
+				if(slideshows[x].ALIAS == slideShowsDisplay.selectedItem.ALIAS){
+					slideshows.removeItemAt(x);
+					break;
+				}
+			}
+			
+			slideShowsDisplay.dataProvider.refresh();
+			
+			if(slideShowsDisplay.dataProvider.length > 0){
+				slideShowsDisplay.selectedIndex = 0;
+			}
+			else{
+				slideShowsDisplay.dataProvider.refresh();
+			}
+		}
+			
+		public function getUsersEventsHandler(event:ResultEvent):void{
+			events = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var c:String in x){
+				events[c] = x[c] as SlideSixEvent;
+			}
+			eventView.addEventListener(FlexEvent.SHOW, function():void{
+				if(events.length == 0 && !eventHelpWindowShown){
+					openHelpWindow('eventHelp');
+					eventHelpWindowShown = true;
+				}
+			});
+		}	
+			
+		public function getUsersGroupsHandler(event:ResultEvent):void{
+			groups = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var g:String in x){
+				groups[g] = x[g] as Group;
+			}
+			groupView.addEventListener(FlexEvent.SHOW, function():void{
+				if(groups.length == 0 && !groupHelpWindowShown){
+					openHelpWindow('groupHelp');
+					groupHelpWindowShown = true;
+				}
+			});
+		}	
+			
+		public function getPendingEventMembersHandler(event:ResultEvent):void {
+			pendingEventMembers = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var c:String in x){
+				pendingEventMembers[c] = x[c] as EventMembership;
+			}
+			statusMsg.text = pendingEventMembers.length.toString() + ' Pending Members Exist'; 
+		}
+			
+		public function getPendingGroupMembersHandler(event:ResultEvent):void {
+			pendingGroupMembers = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var g:String in x){
+				pendingGroupMembers[g] = x[g] as GroupMember;
+			}
+			statusMsg.text = pendingGroupMembers.length.toString() + ' Pending Members Exist'; 
+		}
+			
+			
+		public function saveEventInfoHandler(event:ResultEvent):void {
+			//loadBar.visible = false;
+			statusMsg.text = 'Event Saved';
+			eventDisplay.selectedItem.ID = event.result;
+			eventDisplay.selectedItem.NAME = editEventName.text;
+			eventDisplay.selectedItem.DESCRIPTIONSHORT = editEventDescriptionShort.text;
+			eventDisplay.selectedItem.AUTOACCEPTMEMBERS = editEventAutoAcceptUsers.selected;
+			eventDisplay.selectedItem.DESCRIPTIONFULL = editEventDescriptionFull.text;
+			eventDisplay.selectedItem.STARTDATE = editEventStartDate.selectedDate;
+			eventDisplay.selectedItem.ENDDATE = editEventEndDate.selectedDate;
+			eventDisplay.selectedItem.TRACKS = editEventTracks.text;
+			eventDisplay.selectedItem.VENUE = editEventVenueName.text;
+			eventDisplay.selectedItem.COSTINFO = editEventCostInfo.text;
+			eventDisplay.selectedItem.ORGANIZERINFO = editEventOrganizerInfo.text;
+			eventDisplay.selectedItem.EXTERNALHOMEPAGEURL = editEventExternalHomepageURL.text;
+			eventDisplay.selectedItem.RSSURL = editEventRSSURL.text;
+			eventDisplay.selectedItem.SCHEDULEURL = editEventScheduleURL.text;
+			eventDisplay.selectedItem.CONTACTURL = editEventContactURL.text;
+			getEvents();
+		}
+			
+		public function saveGroupInfoHandler(event:ResultEvent):void {
+			//loadBar.visible = false;
+			statusMsg.text = 'Group Saved';
+			groupDisplay.selectedItem.ID = event.result;
+			groupDisplay.selectedItem.NAME = editGroupName.text;
+			groupDisplay.selectedItem.DESCRIPTION = editGroupDescription.text;
+			groupDisplay.selectedItem.AUTOACCEPTMEMBERS = editGroupAutoAcceptUsers.selected;
+			getGroups();
+		}
+			
+		/*
+		public function toggleFullScreen():void {
+			if (!stage.hasEventListener(FullScreenEvent.FULL_SCREEN)) {
+				stage.addEventListener(FullScreenEvent.FULL_SCREEN, fullScreenHandler);
+			}
+			if (stage.displayState == 'normal') {
+				isInFullScreen = true;
+				//.source = exitFullscreenImg;
+				stage.displayState = StageDisplayState.FULL_SCREEN;
+			}
+			else {
+				isInFullScreen = false;
+				//fullscreenBtn.source = fullscreenImg;
+				stage.displayState = StageDisplayState.NORMAL;
+			}
+		}
+		*/
+		public function fullScreenHandler(e:FullScreenEvent):void {
+			if (!e.fullScreen) {
+				if (managerMediaWindow.visible) {
+					managerMediaWindow.x = 50;
+					managerMediaWindow.y = 50;
+				}
+			}
+		}
+		/* wow these next few functions and the whole way 
+		 * i'm dealing with the published date really, really sucks...  
+		 * some day i'll look back at this code and have a good laugh 
+		*/
+		public function getDate(s:String):String {
+			var sDates:Array = s.split('-');
+			var sTStr:String = sDates[2].substring(sDates[2].indexOf(' ') + 1, sDates[2].length);
+			var sTimes:Array = sTStr.split(':');
+			var sStr:String;
+			sStr = sDates[1] + '/' + sDates[2].slice(0,sDates[2].indexOf(' ')) + '/' + sDates[0];
+			sStr += ' ' + sTimes[0] + ':' + sTimes[1] + ':' + sTimes[2];
+			return sStr;
+		}
+		
+		public function cfDateToFlexDate(d:String):Date {
+			var dArr:Array = d.split('-');
+			var nd:Date = new Date();
+			nd.setFullYear(dArr[0],dArr[1]-1,dArr[2].split(' ')[0]);
+			var tArr:Array = d.split(' ')[1].split(':');
+			nd.setHours(tArr[0],tArr[1],tArr[2].split('.')[0]);
+			return nd;
+		}
+		
+		public function dateToString(d:Date):String {
+			var dStr:String;
+			dStr = d.getFullYear() + '-';
+			dStr += d.getMonth() + 1 + '-';
+			dStr += d.getDate() + ' ';
+			dStr += d.getHours() + ':';
+			d.getMinutes().toString().length < 2 ? dStr += '0' + d.getMinutes() + ':' : dStr += d.getMinutes() + ':';	
+			dStr += d.getMilliseconds();
+			return dStr;
+		}
+		public function slideShowSelected(e:Event):void {
+			if (slideShowsDisplay.selectedIndex > -1) {
+				madePublicOnSave = false;
+				publishedOnSave = false;
+				editGroupID.selectedItem = slideShowsDisplay.selectedItem.GROUPNAME;
+				for(var s:Number=0; s<editGroupID.dataProvider.length; s++){
+					if(editGroupID.dataProvider[s].NAME == slideShowsDisplay.selectedItem.GROUPNAME){
+						editGroupID.selectedIndex = s;
+						break;
+					}
+				}
+				var eventIDS:Array = slideShowsDisplay.selectedItem.EVENTIDLIST.split(',');
+				var indices:Array = new Array();
+				for(var ed:Number=0; ed<editEvents.dataProvider.length; ed++){
+					for(var ev:String in eventIDS){
+						if(editEvents.dataProvider[ed].ID == eventIDS[ev]){
+							indices.push(ed);
+							continue;
+						}
+					}
+				}
+				editEvents.selectedIndices = indices;
+				
+				try{
+					createdOnDisplay.text = dateFormatter.format(slideShowsDisplay.selectedItem.CREATEDON);
+				}
+				catch(e:Error){
+				}
+				if(slideShowsDisplay.selectedItem.LASTBUILDDATE != null){
+					try{
+						lastBuildDateDisplay.text = dateFormatter.format(slideShowsDisplay.selectedItem.LASTBUILDDATE);
+					}
+					catch(e:Error){
+					}
+				}
+				slideShowComments = null;
+				/* if(presoEditTabNav != null){
+					presoEditTabNav.selectedIndex = 0;	
+				} */
+				editSlideShowPassword.text = '';
+				editRepeatPassword.text = '';
+			}
+		}
+		public function slideSelected(e:Event):void {
+			try {
+				if (slideDisplay.selectedIndex != -1) {
+					if (!slideDetail.visible) slideDetail.visible = true;
+					managerMediaWindow.slideID = slideDisplay.selectedItem.ID;
+					managerMediaWindow.streamName = slideDisplay.selectedItem.ID;
+					notesWindow.existingNotes = slideDisplay.selectedItem.NOTES;
+					notesWindow.showNotes = slideDisplay.selectedItem.SHOWNOTES;
+					if (managerMediaWindow.visible) {
+						if (slideDisplay.selectedItem.HASMEDIA) {
+							managerMediaWindow.mediaExists = true;
+							managerMediaWindow.mediaStatus('Loading existing media for slide  \'' + slideDisplay.selectedItem.TITLE + '\'');
+						}
+						else {
+							managerMediaWindow.mediaExists = false;
+							managerMediaWindow.mediaStatus('No media exists for slide  \'' + slideDisplay.selectedItem.TITLE + '\'');
+						}
+					}
+				}
+			}
+			catch (e:Error) {
+				//fail silently...IE for some reason pukes when you select a slide  aren't i using flex so that i don't have to deal with IE?
+			}
+		}
+		
+		public function slideShowDblClick(e:Event):void {
+			goToSlideView();
+		}
+			
+		public function getUser():void {
+			var params:Object = new Object();
+            params.method = 'initUser';
+            sessionProxyService.getCurrentUser.send(params);	
+		}
+			
+		public function getProfile():void {
+			var params:Object = new Object();
+            params.method = 'getProfile';
+            sessionProxyService.getCurrentUser.send(params);	
+		}
+			
+		public function getSlideShows():void {
+			presoSearchString.text = '';
+			statusMsg.text = 'Loading Presentations';
+            slideShowService.listSlideshowsByUserID.send(currentUser.ID);	
+		}
+		
+		public function getSlides():void {
+			statusMsg.text = 'Loading Slides';
+			var params:Object = new Object();
+            params.slideshowID = slideShowsDisplay.selectedItem.ID;
+			slideShowService.listSlidesBySlideshowID.send(params);
+		}
+			
+		public function getSlidesHandler(event:ResultEvent):void{
+			slides = new Array(event.result.length);
+			var x:Array = event.result as Array;
+			for(var s:String in x){
+				slides[s] = x[s] as Slide;
+			}
+			//we haven't shown the intro to slideview win but we did show first preso uploaded (lets not bug them if they're been here before, ya know?)			
+			if(!introSlideViewWindowShown && firstPresoUploadedWindowShown){
+				openHelpWindow('slideHelp');
+				introSlideViewWindowShown = true;
+			}
+			statusMsg.text = slides.length + ' Slides Exist for Presentation (' + slideShowsDisplay.selectedItem.TITLE + ')'; 
+			
+		}
+			
+		public function stackChanged(e:Event):void {
+			managerMediaWindow.visible = false;
+			notesWindow.visible = false;
+			if(uploadWindow != null){
+				uploadWindow.visible = false;
+			}
+		}
+		
+		public function goToSlideView():void {
+			if (mainStack.selectedChild != slideListView) {
+				managerMediaWindow.mediaStatusLog.text = '';
+				mainStack.selectedChild = slideListView;
+				getSlides();
+			}
+			
+		}
+		public function goToPresoView():void {
+			//if (slideDetail.visible) slideDetail.visible = false;
+			//slideDetail.visible = false;
+			mainStack.selectedChild = presoView;
+		}
+		public function goToGroupView():void {
+			mainStack.selectedChild = groupView;
+			statusMsg.text = groups.length.toString() + ' Group(s) Exist'; 
+		}
+		public function goToEventView():void {
+			mainStack.selectedChild = eventView;
+			statusMsg.text = events.length.toString() + ' Events(s) Exist'; 
+		}
+		public function goToProfileView():void {
+			mainStack.selectedChild = profileView;
+		}
+		
+		public function confirmPresoDelete(event:Event):void {
+			Alert.show('Are you sure?\nThis action can not be undone', 'Delete Preso', 3, this, deletePreso);
+		}
+		
+		public function deletePreso(event:CloseEvent):void {
+			if (event.detail == Alert.YES) {
+				var params:Object = new Object();
+				params.ID = slideShowsDisplay.selectedItem.ID;
+				slideShowService.deleteSlideshowByID.send(params);	
+			}
+			
+		}
+		public function savePresoClicked(publish:Boolean,makePublic:Boolean):void {
+			var errors:Array = validatePreso();
+			
+			if (errors.length > 0) {
+				var msg:String = 'Please address the following errors before we can save this presentation:\n';
+				for (var i:int = 0; i < errors.length; i++) {
+					msg += '*' + errors[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				//loadBar.visible = true;
+				statusMsg.text = 'Saving Presentation';
+				var params:Object = new Object();
+				params.title = editSlideShowTitle.text.substr(0,249);
+				params.creditName = editCreditName.text.substr(0,249);
+				params.creditURL = editCreditURL.text.substr(0,999);
+				params.abstract = editAbstract.text.substr(0,2999);
+				params.notifyComments = editNotifyComments.selected ? 1 : 0;
+				params.allowComments = editAllowComments.selected ? 1 : 0;
+				if (editSlideShowPassword.text.length) params.password = editSlideShowPassword.text;	
+				if (makePublic) {
+					params.password = '';
+					madePublicOnSave = true;
+				}
+				if (publish) {
+					params.lastBuildDate = toServerDateTime(new Date());
+					publishedOnSave = true;
+				}
+				var groupID:Number;
+				if (editGroupID.selectedIndex != -1) groupID = groups[editGroupID.selectedIndex].ID;
+				var confIDs:Array = new Array();
+				
+				for(var ci:Object in editEvents.selectedItems){
+					confIDs.push(editEvents.selectedItems[ci].ID);
+				}
+				params.tags = editTags.text;
+				slideShowService.saveSlideshowInfo.send(slideShowsDisplay.selectedItem.ID,params,currentUser.ID,groupID,confIDs.join(','));
+				
+				
+			}
+		}
+		/* public function getPublishedDateTime():Date{
+			var dt:Date = editLastBuildDate.selectedDate;
+			var h:Number = editLastBuildDateTime.hour;
+			var ap:String = editLastBuildDateTime.am_pm.toLowerCase();
+			if(ap == 'pm' && h != 12){
+				h = h+12;
+			}
+			if(ap == 'am' && h == 12){
+				h = 0;
+			}
+			var d:Date = new Date(dt.setHours(h,editLastBuildDateTime.minute,0,0));
+			return d;
+		} */
+		
+		public function toLocalDateTime(d:Date):Date{
+			var nd:Date = new Date();
+			var serverOffset:Number = 4;
+			var offset:Number = nd.timezoneOffset / 60;
+			var diff:Number = serverOffset - offset;
+			var utcd:Date = DateUtil.getUTCDate(d);
+			var localDate:Date = addHours(d,diff);
+			return localDate;
+		}
+		
+		public function toServerDateTime(d:Date):Date{
+			var serverOffset:Number = -4;
+			var utcd:Date = DateUtil.getUTCDate(d);
+			var serverd:Date = addHours(utcd,serverOffset);
+			return serverd;
+		}
+		
+		public static function addWeeks(date:Date, weeks:Number):Date {
+	        return addDays(date, weeks*7);
+	    }
+	
+	    public static function addDays(date:Date, days:Number):Date {
+	        return addHours(date, days*24);
+	    }
+	
+	    public static function addHours(date:Date, hrs:Number):Date {
+	        return addMinutes(date, hrs*60);
+	    }
+	
+	    public static function addMinutes(date:Date, mins:Number):Date {
+	        return addSeconds(date, mins*60);
+	    }
+	
+	    public static function addSeconds(date:Date, secs:Number):Date {
+	        var mSecs:Number = secs * 1000;
+	        var sum:Number = mSecs + date.getTime();
+	        return new Date(sum);
+	    }
+
+		public function validatePreso():Array {
+			var errors:Array = new Array();
+			
+			if (!editSlideShowTitle.text.length) {
+				errors.push('You must have a title for this presentation.');
+			}
+			if (!editAbstract.text.length) {
+				errors.push('You must enter a short abstract describing this presentation.');
+			}
+			if (editAbstract.text.length > 3000) {
+				errors.push('Abstract must be 3000 characters or less.');
+			}
+			if (editSlideShowTitle.text.length > 250) {
+				errors.push('Title must be 250 characters or less.');
+			}
+			if (editCreditName.text.length > 250) {
+				errors.push('Title must be 250 characters or less.');
+			}
+			if (editCreditURL.text.length > 1000) {
+				errors.push('Title must be 1000 characters or less.');
+			}
+			if (MD5.hash(editSlideShowPassword.text) != MD5.hash(editRepeatPassword.text)) {
+				errors.push('Passwords must match.');	
+			}
+			
+			return errors;
+		}
+		
+		public function selectAttachment(event:MouseEvent):void {	
+			
+			if (slideShowsDisplay.selectedItem.PATHTOATTACHMENT != null) {
+				Alert.show('Are you sure?  The current attachment will be deleted.', 'Upload Attachment', Alert.OK | Alert.CANCEL, this, confirmBrowseAttachment); 	
+			}
+			else {
+				browseAttachment();
+			}	
+		}
+		public function confirmBrowseAttachment(event:CloseEvent):void {
+			if (event.detail == Alert.OK) {
+				browseAttachment();
+			}	
+			else {
+				statusMsg.text = 'Attachment Upload Cancelled';
+			}
+		}
+		public function deleteAttachmentClicked(event:MouseEvent):void {	
+			
+			if (slideShowsDisplay.selectedItem.PATHTOATTACHMENT != null) {
+				Alert.show('Are you sure?  This action can not be undone.', 'Delete Attachment', Alert.OK | Alert.CANCEL, this, confirmDeleteAttachment); 	
+			}
+			else {
+				deleteAttachment();
+			}	
+		}
+		
+		public function deleteAttachment():void{
+			statusMsg.text = 'Deleting Attachment';
+			var params:Object = new Object();
+			params.slideshowID = slideShowsDisplay.selectedItem.ID;
+			slideShowService.deleteAttachment.send(params);
+		}
+			
+		public function confirmDeleteAttachment(event:CloseEvent):void {
+			if (event.detail == Alert.OK) {
+				deleteAttachment();
+			}	
+			else {
+				statusMsg.text = 'Attachment Delete Cancelled';
+			}
+		}
+		
+		public function browseAttachment():void {
+			var fileFilter:Array = new Array();
+			fileFilter.push(new FileFilter('Zip Files (*.zip;)', '*.zip;'));
+			
+			slideShowAttachment.addEventListener(Event.SELECT, onSelectAttachmentFile);
+			slideShowAttachment.browse(fileFilter);	
+		}
+		public function viewAttachment(event:MouseEvent):void {
+			var viewAttachmentURL:String = storeBaseURL + slideShowsDisplay.selectedItem.PATHTOATTACHMENT;
+			var urlRequest:URLRequest = new URLRequest(viewAttachmentURL);
+			navigateToURL(urlRequest, '_blank');
+		}
+		
+		public function onSelectAttachmentFile(event:Event):void {
+			var f:FileReference = event.currentTarget as FileReference;
+			var thisExt:String;
+			
+			//mac might have blank file type
+			if (event.currentTarget.type != null) {
+				if (event.currentTarget.type.substr(0,1) == '.') {
+					thisExt = event.currentTarget.type.substr(1, event.currentTarget.type.length);
+				}
+				else {
+					thisExt = event.currentTarget.type;
+				}
+			}
+			else {
+				var nArr:Array = event.currentTarget.name.split('.');
+				thisExt = nArr[nArr.length - 1];
+			}
+			
+			if (thisExt.toLowerCase() != 'zip') {
+				Alert.show('File must be a \'.ZIP\'.');
+			}
+			else {
+				loadBar.visible = true;
+				loadBar.label = 'Uploading Attachment';
+				var serviceURL:String = slideShowServiceURL + '?method=uploadAttachment&jsessionid=' + this.parameters.jsessionid;
+				var request:URLRequest = new URLRequest(serviceURL);
+				var params:URLVariables = new URLVariables();   
+				params.method = 'uploadAttachment';
+				params.returnFormat = 'plain';
+				params.fileField = 'attachmentFile';
+				params.slideshowID = slideShowsDisplay.selectedItem.ID;
+				request.method = URLRequestMethod.POST;
+				request.data = params;
+				
+				CursorManager.setBusyCursor();
+				
+				f.addEventListener(Event.COMPLETE,attachmentCompleteHandler);
+				f.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA,attachmentUploadCompleteHandler);
+				f.addEventListener(ProgressEvent.PROGRESS,monitorAttachmentUploadProgress);
+				f.addEventListener(IOErrorEvent.IO_ERROR,handleAttachmentUploadError);
+				f.upload(request, 'attachmentFile', false);
+			}
+		}
+		
+		public function eventImageSelect():void {
+				if(eventDisplay.selectedItem.ID != 0){
+					var fileFilter:Array = new Array();
+					fileFilter.push(new FileFilter('Image Files (*.jpg;*.png;*.gif;)', '*.jpg;*.png;*.gif;'));
+					
+					eventImage.addEventListener(Event.SELECT, onSelectEventImageFile);
+					eventImage.browse(fileFilter);	
+				}
+				else{
+					Alert.show('Please save this event before uploading an image.', 'Error');
+				}
+		}
+		
+		
+		public function eventBannerImageSelect():void {
+				if(eventDisplay.selectedItem.ID != 0){
+					var fileFilter:Array = new Array();
+					fileFilter.push(new FileFilter('Image Files (*.jpg;*.png;*.gif;)', '*.jpg;*.png;*.gif;'));
+					eventBannerImage.addEventListener(Event.SELECT, onSelectEventBannerImageFile);
+					eventBannerImage.browse(fileFilter);	
+				}
+				else{
+					Alert.show('Please save this event before uploading an image.', 'Error');
+				}
+		}
+		
+		public function groupImageSelect():void {
+				if(groupDisplay.selectedItem.ID != 0){
+					var fileFilter:Array = new Array();
+					fileFilter.push(new FileFilter('Image Files (*.jpg;*.png;*.gif;)', '*.jpg;*.png;*.gif;'));
+					
+					groupImage.addEventListener(Event.SELECT, onSelectGroupImageFile);
+					groupImage.browse(fileFilter);	
+				}
+				else{
+					Alert.show('Please save this group before uploading an image.', 'Error');
+				}
+		}
+		
+		public function onSelectEventImageFile(event:Event):void {
+			var f:FileReference = event.currentTarget as FileReference;
+			var thisExt:String;
+			
+			//fix extension in case Mac (no type)
+			if (event.currentTarget.type != null) {
+				if (event.currentTarget.type.substr(0,1) == '.') {
+					thisExt = event.currentTarget.type.substr(1, event.currentTarget.type.length);
+				}
+				else {
+					thisExt = event.currentTarget.type;
+				}
+			}
+			else {
+				var nArr:Array = event.currentTarget.name.split('.');
+				thisExt = nArr[nArr.length - 1];
+			}
+			
+			if (acceptedImageExtensions.indexOf(thisExt.toLowerCase()) == -1) {
+				Alert.show('Image must be one of the following: ' + acceptedImageExtensions.join(',') + '.');
+			}
+			else {
+				loadBar.visible = true;
+				loadBar.label = 'Uploading';
+				statusMsg.text = 'Uploading Event Image';
+				var serviceURL:String = eventServiceURL + '?method=saveEventImage&jsessionid=' + this.parameters.jsessionid;
+				var request:URLRequest = new URLRequest(serviceURL);
+				var params:URLVariables = new URLVariables();   
+				params.ID = eventDisplay.selectedItem.ID;
+				params.method = 'saveEventImage';
+				params.returnFormat = 'plain';
+			
+				request.method = URLRequestMethod.POST;
+				request.data = params;
+				
+				CursorManager.setBusyCursor();
+				
+				f.addEventListener(Event.COMPLETE,eventImageUploadComplete);
+				f.addEventListener(ProgressEvent.PROGRESS,monitorEventImageUploadProgress);
+				f.addEventListener(IOErrorEvent.IO_ERROR, handleEventImageUploadError);
+				f.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, eventImageUploadCompleteHandler);
+				f.upload(request, 'eventImgUpload', false);
+			}
+		}
+		public function handleEventImageUploadError(event:IOErrorEvent):void {
+			loadBar.visible = false;
+			CursorManager.removeBusyCursor();
+			var error:String = 'ERROR: ' + event.text + '\n';
+			Alert.show(error);
+		}
+		public function monitorEventImageUploadProgress(event:ProgressEvent):void {
+			
+			//do nothing for now...maybe a progress bar at some point?
+		}
+		public function eventImageUploadCompleteHandler(event:DataEvent):void {
+			eventDisplay.selectedItem.PATHTOIMAGE = event.data as String;
+			eventDisplay.dataProvider.refresh();
+		}
+		public function eventImageUploadComplete(event:Event):void {
+		   	loadBar.visible = false;
+		   	CursorManager.removeBusyCursor();
+		   	statusMsg.text = 'Event Image Uploaded';
+		}
+		
+		
+		public function onSelectEventBannerImageFile(event:Event):void {
+			var bf:FileReference = event.currentTarget as FileReference;
+			var thisExt:String;
+			
+			//fix extension in case Mac (no type)
+			if (event.currentTarget.type != null) {
+				if (event.currentTarget.type.substr(0,1) == '.') {
+					thisExt = event.currentTarget.type.substr(1, event.currentTarget.type.length);
+				}
+				else {
+					thisExt = event.currentTarget.type;
+				}
+			}
+			else {
+				var nArr:Array = event.currentTarget.name.split('.');
+				thisExt = nArr[nArr.length - 1];
+			}
+			
+			if (acceptedImageExtensions.indexOf(thisExt.toLowerCase()) == -1) {
+				Alert.show('Image must be one of the following: ' + acceptedImageExtensions.join(',') + '.');
+			}
+			else {
+				loadBar.visible = true;
+				loadBar.label = 'Uploading';
+				statusMsg.text = 'Uploading Event Banner Image';
+				var serviceURL:String = eventServiceURL + '?method=saveEventBannerImage&jsessionid=' + this.parameters.jsessionid;
+				var request:URLRequest = new URLRequest(serviceURL);
+				var params:URLVariables = new URLVariables();   
+				params.ID = eventDisplay.selectedItem.ID;
+				params.method = 'saveEventBannerImage';
+				params.generateThumb = false;
+				params.width = '700';
+				params.height = '150';
+				params.returnFormat = 'plain';
+			
+				request.method = URLRequestMethod.POST;
+				request.data = params;
+				
+				CursorManager.setBusyCursor();
+				
+				bf.addEventListener(Event.COMPLETE,eventBannerImageUploadComplete);
+				bf.addEventListener(ProgressEvent.PROGRESS,monitorEventBannerImageUploadProgress);
+				bf.addEventListener(IOErrorEvent.IO_ERROR, handleEventBannerImageUploadError);
+				bf.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, eventBannerImageUploadCompleteHandler);
+				bf.upload(request, 'eventImgUpload', false);
+			}
+		}
+		public function handleEventBannerImageUploadError(event:IOErrorEvent):void {
+			loadBar.visible = false;
+			CursorManager.removeBusyCursor();
+			var error:String = 'ERROR: ' + event.text + '\n';
+			Alert.show(error);
+		}
+		public function monitorEventBannerImageUploadProgress(event:ProgressEvent):void {
+			
+			//do nothing for now...maybe a progress bar at some point?
+		}
+		public function eventBannerImageUploadCompleteHandler(event:DataEvent):void {
+			eventDisplay.selectedItem.PATHTOBANNERIMAGE = event.data as String;
+			eventDisplay.dataProvider.refresh();
+		}
+		public function eventBannerImageUploadComplete(event:Event):void {
+		   	loadBar.visible = false;
+		   	CursorManager.removeBusyCursor();
+		   	statusMsg.text = 'Event Banner Image Uploaded';
+		}
+		
+		
+		public function onSelectGroupImageFile(event:Event):void {
+			var f:FileReference = event.currentTarget as FileReference;
+			var thisExt:String;
+			
+			//fix extension in case Mac (no type)
+			if (event.currentTarget.type != null) {
+				if (event.currentTarget.type.substr(0,1) == '.') {
+					thisExt = event.currentTarget.type.substr(1, event.currentTarget.type.length);
+				}
+				else {
+					thisExt = event.currentTarget.type;
+				}
+			}
+			else {
+				var nArr:Array = event.currentTarget.name.split('.');
+				thisExt = nArr[nArr.length - 1];
+			}
+			
+			if (acceptedImageExtensions.indexOf(thisExt.toLowerCase()) == -1) {
+				Alert.show('Image must be one of the following: ' + acceptedImageExtensions.join(',') + '.');
+			}
+			else {
+				loadBar.visible = true;
+				loadBar.label = 'Uploading';
+				statusMsg.text = 'Uploading Group Image';
+				var serviceURL:String = groupServiceURL + '?method=saveGroupImage&jsessionid=' + this.parameters.jsessionid;
+				var request:URLRequest = new URLRequest(serviceURL);
+				var params:URLVariables = new URLVariables();   
+				params.ID = groupDisplay.selectedItem.ID;
+				params.method = 'saveGroupImage';
+				params.returnFormat = 'plain';
+			
+				request.method = URLRequestMethod.POST;
+				request.data = params;
+				
+				CursorManager.setBusyCursor();
+				
+				f.addEventListener(Event.COMPLETE,groupImageUploadComplete);
+				f.addEventListener(ProgressEvent.PROGRESS,monitorGroupImageUploadProgress);
+				f.addEventListener(IOErrorEvent.IO_ERROR, handleGroupImageUploadError);
+				f.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, groupImageUploadCompleteHandler);
+				f.upload(request, 'groupImgUpload', false);
+			}
+		}
+		public function handleGroupImageUploadError(event:IOErrorEvent):void {
+			loadBar.visible = false;
+			CursorManager.removeBusyCursor();
+			var error:String = 'ERROR: ' + event.text + '\n';
+			Alert.show(error);
+		}
+		public function monitorGroupImageUploadProgress(event:ProgressEvent):void {
+			
+			//do nothing for now...maybe a progress bar at some point?
+		}
+		public function groupImageUploadCompleteHandler(event:DataEvent):void {
+			groupDisplay.selectedItem.PATHTOIMAGE = event.data as String;
+			groupDisplay.dataProvider.refresh();
+		}
+		public function groupImageUploadComplete(event:Event):void {
+		   	loadBar.visible = false;
+		   	CursorManager.removeBusyCursor();
+		   	statusMsg.text = 'Group Image Uploaded';
+		}
+		
+		//userimgs
+		public function userImageSelect():void {
+			var fileFilter:Array = new Array();
+			fileFilter.push(new FileFilter('Image Files (*.jpg;*.png;*.gif;)', '*.jpg;*.png;*.gif;'));
+			
+			userImage.addEventListener(Event.SELECT, onSelectUserImageFile);
+			userImage.browse(fileFilter);	
+		}
+		
+		public function onSelectUserImageFile(event:Event):void {
+			var f:FileReference = event.currentTarget as FileReference;
+			var thisExt:String;
+			
+			//fix extension in case Mac (no type)
+			if (event.currentTarget.type != null) {
+				if (event.currentTarget.type.substr(0,1) == '.') {
+					thisExt = event.currentTarget.type.substr(1, event.currentTarget.type.length);
+				}
+				else {
+					thisExt = event.currentTarget.type;
+				}
+			}
+			else {
+				var nArr:Array = event.currentTarget.name.split('.');
+				thisExt = nArr[nArr.length - 1];
+			}
+			
+			if (acceptedImageExtensions.indexOf(thisExt.toLowerCase()) == -1) {
+				Alert.show('Image must be one of the following: ' + acceptedImageExtensions.join(',') + '.');
+			}
+			
+			else {
+				loadBar.visible = true;
+				loadBar.label = 'Uploading';
+				statusMsg.text = 'Uploading Profile Image';
+				var serviceURL:String = userServiceURL + '?method=saveUserImage&jsessionid=' + this.parameters.jsessionid;
+				var request:URLRequest = new URLRequest(serviceURL);
+				var params:URLVariables = new URLVariables();   
+				params.id = currentUser.ID;
+				params.returnFormat = 'plain';
+			
+				request.method = URLRequestMethod.POST;
+				request.data = params;
+		
+				CursorManager.setBusyCursor();
+				
+				f.addEventListener(Event.COMPLETE,userImageUploadComplete);
+				f.addEventListener(ProgressEvent.PROGRESS,monitorUserImageUploadProgress);
+				f.addEventListener(IOErrorEvent.IO_ERROR, handleUserImageUploadError);
+				f.addEventListener(DataEvent.UPLOAD_COMPLETE_DATA, userImageUploadCompleteHandler);
+				f.upload(request, 'userImgUpload', false);
+			}
+		}
+		public function handleUserImageUploadError(event:IOErrorEvent):void {
+			loadBar.visible = false;
+			CursorManager.removeBusyCursor();
+			faultHandler(event);
+		}
+		public function monitorUserImageUploadProgress(event:ProgressEvent):void {
+			//do nothing for now...maybe a progress bar at some point?
+		}
+		public function userImageUploadCompleteHandler(event:DataEvent):void {
+			currentUser.PATHTOIMAGE = event.data as String;
+			userImg.source = storeBaseURL + currentUser.PATHTOIMAGE;
+		}
+		public function userImageUploadComplete(event:Event):void {
+		   	loadBar.visible = false;
+		   	CursorManager.removeBusyCursor();
+		   	statusMsg.text = 'User Image Uploaded';
+		}
+		
+		//end userimgs
+		public function handleAttachmentUploadError(event:IOErrorEvent):void {
+			//loadBar.visible = false;
+			CursorManager.removeBusyCursor();
+			var error:String = 'ERROR: ' + event.text + '\n';
+			Alert.show(error);
+		}
+		
+		public function attachmentUploadCompleteHandler(event:DataEvent):void {
+			slideShowsDisplay.selectedItem.PATHTOATTACHMENT = event.data as String;
+			slideShowsDisplay.dataProvider.refresh();
+			slideShowsDisplay.selectedIndex = slideShowsDisplay.selectedIndex;
+		}
+		public function attachmentCompleteHandler(event:Event):void {
+		   loadBar.visible = false;
+		   loadBar.label = '';
+		   CursorManager.removeBusyCursor();
+		   statusMsg.text = 'Attachment Uploaded';
+		}
+		
+		public function monitorAttachmentUploadProgress(event:ProgressEvent):void {
+			//do nothing for now...maybe a progress bar at some point?
+		}
+		
+		public function saveProfileClicked(event:MouseEvent):void {
+			var profileErrors:Array = validateProfile();
+			if (profileErrors.length > 0) {
+				var msg:String = 'Please address the following errors before we can save your profile:\n';
+				for (var i:int = 0; i < profileErrors.length; i++) {
+					msg += '*' + profileErrors[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				saveProfile();
+			}
+		}
+		
+		public function saveProfile():void {
+			//loadBar.visible = true;
+			statusMsg.text = 'Saving Profile';
+			var userParams:Object = new Object();
+			userParams.email = editProfileEmail.text.substr(0, 249);
+			userParams.FIRSTNAME= editProfileFirstName.text.substr(0, 49);
+			userParams.LASTNAME = editProfileLastName.text.substr(0, 49);
+			if(editDisqusShortName.text.length > 0){
+				userParams.DISQUSSHORTNAME = editDisqusShortName.text.substr(0, 499);
+			}
+			userParams.bio = editProfileBio.text.substr(0, 2999);
+			if (editProfilePassword.text.length > 0) {
+				userParams.password = editProfilePassword.text;
+			}
+			if(editDedicatedRoomPassword.text.length > 0){
+				userParams.DEDICATEDROOMPASSWORD= editDedicatedRoomPassword.text;
+			}
+			if(removeDedicatedRoomPassword.selected){
+				userParams.DEDICATEDROOMPASSWORD= '';
+			}
+            userService.saveProfile.send(currentUser.ID,userParams);
+		}
+		
+		public function profileSavedHandler(event:ResultEvent):void {
+			var unprotecting:Boolean = removeDedicatedRoomPassword.selected;
+			
+			//blank out the passwords
+			var isPassChanged:Boolean = editProfilePassword.text.length || editDedicatedRoomPassword.text.length ? true : false;
+		
+			if(editDedicatedRoomPassword.text.length > 0){
+				remoteDedicatedRoomPasswordGroup.visible = true;
+			}
+			if(unprotecting){
+				remoteDedicatedRoomPasswordGroup.visible = false;
+				removeDedicatedRoomPassword.selected = false;
+			}
+			currentUser.EMAIL = editProfileEmail.text.substr(0, 249);
+			currentUser.FIRSTNAME = editProfileFirstName.text.substr(0, 49);
+			currentUser.LASTNAME = editProfileLastName.text.substr(0, 49);
+			currentUser.DISQUSSHORTNAME = editDisqusShortName.text.substr(0, 499);
+			currentUser.BIO = editProfileBio.text.substr(0, 2999);
+			if (editProfilePassword.text.length > 0) {
+				currentUser.PASSWORD = MD5.hash(editProfilePassword.text);
+			}
+			if(editDedicatedRoomPassword.text.length > 0){
+				currentUser.DEDICATEDROOMPASSWORD= MD5.hash(editDedicatedRoomPassword.text);
+			}
+			
+			statusMsg.text = 'Profile Saved';
+			if(isPassChanged){
+				statusMsg.text += ' (Password Has Been Changed)';
+			}
+			editProfilePassword.text = '';
+			editProfileRepeatPassword.text = '';
+			editDedicatedRoomPassword.text = '';
+			editDedicatedRoomRepeatPassword.text = '';
+		}
+		
+		public function metaTabChanged(e:Event):void{
+			if(presoEditTabNav.selectedIndex == 2){
+				getComments();
+			}
+		}
+		
+		public function deleteCommentClicked(e:MouseEvent):void{
+			if(slideShowCommentGrid.selectedIndex == -1){
+				Alert.show('Please select a comment.', 'Hold Up...');
+			}
+			else{
+				Alert.show('Are you sure?\nThis action can not be undone', 'Delete Comment', 3, this, deleteComment);			
+			}
+		}
+		
+		public function deleteComment(event:CloseEvent):void {
+			if (event.detail == Alert.YES) {
+				var params:Object = new Object();
+				params.id = slideShowCommentGrid.selectedItem.ID;
+				slideShowService.deleteCommentByID.send(params);	
+			}
+			
+		}
+		
+		public function getComments():void{
+			var params:Object = new Object();
+			params.slideShowID = slideShowsDisplay.selectedItem.ID;			
+            slideShowService.listCommentsBySlideshowID.send(params);	
+		}
+		
+		public function validateProfile():Array {
+			var errors:Array = new Array();
+			
+			if (!editProfileEmail.text.length) {
+				errors.push('A valid email address is required.');
+			}
+			if (editProfileBio.text.length > 3000) {
+				errors.push('Bio must be 3000 characters or less.');
+			}
+			if (editProfileFirstName.text.length > 50) {
+				errors.push('First name must be 50 characters or less.');
+			}
+			if (editProfileLastName.text.length > 50) {
+				errors.push('Last name must be 50 characters or less.');
+			}
+			if (editDisqusShortName.text.length > 500) {
+				errors.push('Disqus Short Name must be 500 characters or less.');
+			}
+			if (!editProfileFirstName.text.length) {
+				errors.push('First Name is required.');
+			}
+			if (!editProfileLastName.text.length) {
+				errors.push('Last Name is required.');
+			}
+			if (editProfilePassword.text.length > 50) {
+				errors.push('Password must be less then 50 characters.');
+			}
+			if (MD5.hash(editProfilePassword.text) != MD5.hash(editProfileRepeatPassword.text)) {
+				errors.push('Profile passwords must match.');	
+			}
+			if (editDedicatedRoomPassword.text.length > 50) {
+				errors.push('Dedicated Room password must be less then 50 characters.');
+			}
+			if (MD5.hash(editDedicatedRoomPassword.text) != MD5.hash(editDedicatedRoomRepeatPassword.text)) {
+				errors.push('Dedicated Room passwords must match.');	
+			}
+			return errors;
+		}
+			
+		public function validateEvent():Array {
+			var errors:Array = new Array();
+			
+			if (!editEventName.text.length) {
+				errors.push('Event name is required.');
+			}
+			if (!editEventDescriptionShort.text.length) {
+				errors.push('Brief description is required.');
+			}
+			return errors;
+		}
+			
+		public function validateGroup():Array {
+			var errors:Array = new Array();
+			
+			if (!editGroupName.text.length) {
+				errors.push('Group name is required.');
+			}
+			if (!editGroupDescription.text.length) {
+				errors.push('Group description is required.');
+			}
+			if (editGroupDescription.text.length > 2000) {
+				errors.push('Group description must be 2000 characters or less.');
+			}
+			if (editGroupName.text.length > 50) {
+				errors.push('Group description must be 50 characters or less.');
+			}
+			return errors;
+		}
+		
+		public function eventSelected(event:MouseEvent):void {
+			if (eventDisplay.selectedIndex != -1) {
+				if (eventDisplay.selectedItem.ISOWNER) {
+					getEventPendingMembers();
+				}
+			}
+		}
+		
+		public function groupSelected(event:MouseEvent):void {
+			if (groupDisplay.selectedIndex != -1) {
+				if (groupDisplay.selectedItem.ISOWNER) {
+					getGroupPendingMembers();
+				}
+			}
+		}
+		
+		public function saveEventMembershipsClicked(event:MouseEvent):void {
+			statusMsg.text = 'Saving Pending Members';
+			var mArr:Array = new Array();
+			var eventID:Number = eventDisplay.selectedItem.ID;
+			
+			for (var i:int = pendingEventMembersGrid.dataProvider.length - 1; i > -1; i--) {
+				if(pendingEventMembersGrid.dataProvider[i].approved != null){
+					var mObj:Object = new Object();
+					mObj.eventMembershipID = pendingEventMembersGrid.dataProvider[i].GROUPMEMBERSHIPID;
+					mObj.isApproved = pendingEventMembersGrid.dataProvider[i].approved;
+					mArr.push(mObj);					
+					pendingEventMembersGrid.dataProvider.removeItemAt(i);
+				}
+				else{}
+			}
+			//eventService.savePendingMemberships.send(mArr, eventID);
+		}
+		
+		public function saveGroupMembershipsClicked(event:MouseEvent):void {
+			statusMsg.text = 'Saving Pending Members';
+			var mArr:Array = new Array();
+			var groupID:Number = groupDisplay.selectedItem.ID;
+			
+			for (var i:int = pendingGroupMembersGrid.dataProvider.length - 1; i > -1; i--) {
+				if(pendingGroupMembersGrid.dataProvider[i].approved != null){
+					var mObj:Object = new Object();
+					mObj.groupMembershipID = pendingGroupMembersGrid.dataProvider[i].GROUPMEMBERSHIPID;
+					mObj.isApproved = pendingGroupMembersGrid.dataProvider[i].approved;
+					mArr.push(mObj);					
+					pendingGroupMembersGrid.dataProvider.removeItemAt(i);
+				}
+				else{}
+			}
+			//groupService.savePendingMemberships.send(mArr, groupID);
+		}
+		
+		public function savePendingEventMembershipsHandler(event:ResultEvent):void{
+			statusMsg.text = 'Pending Event Memberships Saved';
+		}
+		
+		public function savePendingGroupMembershipsHandler(event:ResultEvent):void{
+			statusMsg.text = 'Pending Group Memberships Saved';
+		}
+			
+		public function saveEventClicked(event:MouseEvent):void {
+			var eventErrors:Array = validateEvent();
+			if (eventErrors.length > 0) {
+				var msg:String = 'Please address the following errors before we can save your event:\n';
+				for (var i:int = 0; i < eventErrors.length; i++) {
+					msg += '*' + eventErrors[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				saveEvent();
+			}
+			
+		}
+			
+		public function saveGroupClicked(event:MouseEvent):void {
+			var groupErrors:Array = validateGroup();
+			if (groupErrors.length > 0) {
+				var msg:String = 'Please address the following errors before we can save your group:\n';
+				for (var i:int = 0; i < groupErrors.length; i++) {
+					msg += '*' + groupErrors[i] + '\n';
+				}
+				Alert.show(msg, 'Attention');
+			}
+			else {
+				saveGroup();
+			}
+			
+		}
+		
+		public function saveEvent():void {
+			statusMsg.text = 'Saving Event';
+			var eventParams:Object = new Object();
+			eventParams.NAME = editEventName.text;
+			eventParams.DESCRIPTIONSHORT = editEventDescriptionShort.text;
+			eventParams.AUTOACCEPTMEMBERS = editEventAutoAcceptUsers.selected;
+			eventParams.DESCRIPTIONFULL = editEventDescriptionFull.text;
+			eventParams.STARTDATE = editEventStartDate.selectedDate;
+			eventParams.ENDDATE = editEventEndDate.selectedDate;
+			eventParams.VENUE = editEventVenueName.text;
+			eventParams.TRACKS = editEventTracks.text;
+			eventParams.COSTINFO = editEventCostInfo.text;
+			eventParams.ORGANIZERINFO = editEventOrganizerInfo.text;
+			eventParams.EXTERNALHOMEPAGEURL = editEventExternalHomepageURL.text;
+			eventParams.RSSURL = editEventRSSURL.text;
+			eventParams.SCHEDULEURL = editEventScheduleURL.text;
+			eventParams.CONTACTURL = editEventContactURL.text;
+			
+			if(eventDisplay.selectedItem.ID == 0){
+				eventService.saveNewEvent.send(eventParams, currentUser.ID);				
+			}
+			else{
+				eventService.saveEventInfo.send(eventDisplay.selectedItem.ID,eventParams);
+			}
+		}
+		
+		public function saveGroup():void {
+			statusMsg.text = 'Saving Group';
+			var groupParams:Object = new Object();
+			groupParams.NAME = editGroupName.text.substr(0, 49);
+			groupParams.DESCRIPTION= editGroupDescription.text.substr(0, 1999);
+			groupParams.AUTOACCEPTMEMBERS = editGroupAutoAcceptUsers.selected;
+			
+			if(groupDisplay.selectedItem.ID == 0){
+				groupService.saveNewGroup.send(groupParams, currentUser.ID);				
+			}
+			else{
+				groupService.saveGroupInfo.send(groupDisplay.selectedItem.ID,groupParams);
+			}
+		}
+		
+		public function newEvent():void {
+			var newEvent:SlideSixEvent = new SlideSixEvent();
+			newEvent.NAME = ''; 
+			newEvent.JOINEDON = new Date();
+			newEvent.CREATEDON = new Date();
+			newEvent.STARTDATE = null;
+			newEvent.ENDDATE = null;
+			newEvent.ALIAS = '';
+			newEvent.CONTACTURL = '';
+			newEvent.EXTERNALHOMEPAGEURL = '';
+			newEvent.VENUE = '';
+			newEvent.COSTINFO = '';
+			newEvent.TRACKS = '';
+			newEvent.ORGANIZERINFO = '';
+			newEvent.SCHEDULEURL = '';
+			newEvent.RSSURL = '';
+			newEvent.PATHTOBANNERIMAGE = '';
+			newEvent.PATHTOIMAGE = '';
+			newEvent.PATHTOIMAGETHUMB = '';
+			newEvent.DESCRIPTIONSHORT = '';
+			newEvent.DESCRIPTIONFULL = '';
+			newEvent.AUTOACCEPTMEMBERS = false;
+			newEvent.ISOWNER = true;
+			newEvent.PENDINGMEMBERS = 0;
+			newEvent.ID = 0;
+			events.push(newEvent); 
+			
+			eventDisplay.dataProvider.refresh();
+			
+			eventEditTabNav.selectedChild = eventTabNavTabOne;
+			eventDisplay.selectedIndex = events.length;
+			
+			fixEventDisplay();
+			statusMsg.text = 'Enter Event Details And Save To Finish Creating Event';   
+		}
+		
+		public function newGroup():void {
+			var newGroup:Group = new Group();
+			newGroup.NAME = '';
+			newGroup.JOINEDON = new Date();
+			newGroup.CREATEDON = new Date();
+			newGroup.ALIAS = '';
+			newGroup.PATHTOIMAGE = '';
+			newGroup.PATHTOIMAGETHUMB = '';
+			newGroup.DESCRIPTION = '';
+			newGroup.AUTOACCEPTMEMBERS = false;
+			newGroup.ISOWNER = true;
+			newGroup.PENDINGMEMBERS = 0;
+			newGroup.ID = 0;
+			groups.push(newGroup); 
+			
+			groupDisplay.dataProvider.refresh();
+			
+			groupEditTabNav.selectedChild = groupTabNavTabOne;
+			groupDisplay.selectedIndex = groups.length;
+			
+			fixGroupDisplay();
+			statusMsg.text = 'Enter Group Details And Save To Finish Creating Group';   
+		}
+		
+		public function createUUID():String {
+			var uuid:String = UIDUtil.createUID()
+			var uReturn:String;
+			uReturn = uuid.substr(0, 23);
+			uReturn += uuid.substr(24, uuid.length);
+			return uReturn;
+		}
+		public function sortCreatedOn(objA:Object,objB:Object,fields:Array=null):int{
+			var dateA:Date = objA.CREATEDON as Date;
+			var dateB:Date = objB.CREATEDON as Date;
+			var toggle:Number = isSlideshowSortReversed ? 1 : -1;
+			if(dateA == null && dateB != null){
+				return 1
+			}
+			if(dateA != null && dateB == null){
+				return -1;
+			}
+			if(dateA == null && dateB == null){
+				return 0;
+			}
+			return toggle * ObjectUtil.dateCompare(dateA,dateB);
+		}
+		public function sortPublishedOn(objA:Object,objB:Object,fields:Array=null):int{
+			var dateA:Date = objA.LASTBUILDDATE;
+			var dateB:Date = objB.LASTBUILDDATE;
+			var toggle:Number = isSlideshowSortReversed ? 1 : -1;
+			if(dateA == null && dateB != null){
+				return 1
+			}
+			if(dateA != null && dateB == null){
+				return -1;
+			}
+			if(dateA == null && dateB == null){
+				return 0;
+			}
+			return toggle * ObjectUtil.dateCompare(dateA,dateB);
+		}
+			
+		private function dump(...args):void{
+			if(args.length){
+				for(var x:Number = 0; x<args.length; x++){
+					trace(ObjectUtil.toString(args[x]));
+				}
+			}
+		}
+		public var isSlideshowSortReversed:Boolean = false;
+			
+		public function sortNew(reversed:Boolean = false):void{
+			isSlideshowSortReversed = reversed;
+			sortPresentations();
+		}
+			
+		public function sortPresentations():void {
+			//slideshows.sort = null;
+			var currentSortField:String = presoSortColumn.selectedItem.data;
+			var sort:Sort = new Sort();
+			var sortField:SortField = new SortField(currentSortField, true);
+			if(!isSlideshowSortReversed){
+				isSlideshowSortReversed = true;
+			}
+			else{
+				isSlideshowSortReversed = false;
+			}
+			if(currentSortField == 'CREATEDON'){
+				sort.compareFunction = sortCreatedOn;
+			}
+			if(currentSortField == 'LASTBUILDDATE'){
+				sort.compareFunction = sortPublishedOn;
+			}
+			if(currentSortField != 'CREATEDON' && currentSortField != 'LASTBUILDDATE'){
+				sort.compareFunction = null;
+			} 
+			sortField.descending = isSlideshowSortReversed;
+			sort.fields = [sortField];
+			
+			slideshows.sort = sort;
+			slideshows.refresh();
+			slideShowsDisplay.dataProvider.refresh();
+		}
+		
+		/* public function reverseSortOrder():void {
+			if (slideshows.sort == null) {
+				sortPresentations();
+			}
+			slideshows.sort.reverse();
+			slideshows.refresh();
+			slideShowsDisplay.dataProvider.refresh();
+		} */
+		public function presoFilterFunc(item:Object):Boolean {
+			var searchString:String = presoSearchString.text.toLowerCase();
+			return item.TITLE.toLowerCase().indexOf(searchString) > -1 || item.ABSTRACT.toLowerCase().indexOf(searchString) > -1 || item.TAGLIST.toLowerCase().indexOf(searchString) > -1; 
+		}
+		public function filterPresentations():void {
+			slideShowsDisplay.selectedIndex = -1;
+			
+			//halloween easter egg!!! woot!
+			if(presoSearchString.text.toLowerCase() == 'scary'){
+				showExternalMediaPlayWindow('orOQQqRC074', 'youtube');
+			}
+			
+			if (presoSearchString.text.length) {
+				slideShowsDisplay.dataProvider.filterFunction = presoFilterFunc;
+				slideShowsDisplay.dataProvider.refresh();	
+				statusMsg.text = 'Search Found ' + slideShowsDisplay.dataProvider.length + ' Presentation';
+				slideShowsDisplay.dataProvider.length.toString() != '1' ? statusMsg.text +='s' : '' ;
+			}
+			else {
+				slideShowsDisplay.dataProvider.filterFunction = null;
+				slideShowsDisplay.dataProvider.refresh();	
+				statusMsg.text = slideShowsDisplay.dataProvider.length + ' Presentations Exist';
+			}
+			
+			
+		}
+		
+		public function setImgSize():void {
+			var scaleFactor:Number = slideImage.height / slideImage.contentHeight;
+			var imgWidth:Number = slideImage.contentWidth * scaleFactor;
+			initialSlideWidth = imgWidth;
+		}
+		
+		public function fixSlideShowDisplay():void {
+			if (slideShowsDisplay.verticalScrollPolicy != 'off') {
+				var cCount:Number = slideShowsDisplay.columnCount;
+				var cIndex:Number = slideShowsDisplay.selectedIndex + 1;
+				var newVPos:Number = Math.ceil(cIndex / cCount);
+				
+				if (newVPos > 0) newVPos = newVPos - 1;
+				if (newVPos > slideShowsDisplay.maxVerticalScrollPosition) newVPos = slideShowsDisplay.maxVerticalScrollPosition;
+				if (newVPos <= slideShowsDisplay.maxVerticalScrollPosition) slideShowsDisplay.verticalScrollPosition = newVPos;
+			}
+		}
+
+		public function fixSlideDisplay():void {
+			var cCount:Number = slideDisplay.columnCount;
+			var cIndex:Number = slideDisplay.selectedIndex + 1;
+			var newVPos:Number = Math.ceil(cIndex / cCount);
+			
+			if (newVPos > 0) newVPos = newVPos - 1;
+			if (newVPos > slideDisplay.maxVerticalScrollPosition) newVPos = slideDisplay.maxVerticalScrollPosition;
+			if (newVPos <= slideDisplay.maxVerticalScrollPosition) slideDisplay.verticalScrollPosition = newVPos;
+		}
+
+		public function fixEventDisplay():void {
+			if (eventDisplay.verticalScrollPolicy != 'off') {
+				var cCount:Number = eventDisplay.columnCount;
+				var cIndex:Number = eventDisplay.selectedIndex + 1;
+				var newVPos:Number = Math.ceil(cIndex / cCount);
+				
+				if (newVPos > 0) newVPos = newVPos - 1;
+				if (newVPos > eventDisplay.maxVerticalScrollPosition) newVPos = eventDisplay.maxVerticalScrollPosition;
+				if (newVPos <= eventDisplay.maxVerticalScrollPosition) eventDisplay.verticalScrollPosition = newVPos;
+			}
+		}
+
+		public function fixGroupDisplay():void {
+			if (groupDisplay.verticalScrollPolicy != 'off') {
+				var cCount:Number = groupDisplay.columnCount;
+				var cIndex:Number = groupDisplay.selectedIndex + 1;
+				var newVPos:Number = Math.ceil(cIndex / cCount);
+				
+				if (newVPos > 0) newVPos = newVPos - 1;
+				if (newVPos > groupDisplay.maxVerticalScrollPosition) newVPos = groupDisplay.maxVerticalScrollPosition;
+				if (newVPos <= groupDisplay.maxVerticalScrollPosition) groupDisplay.verticalScrollPosition = newVPos;
+			}
+		}
+		
+		public function faultHandler(e:Event):void {
+			//Alert.show('An unexpected error has occurred.  We\'re sorry for the inconvenience.  We have been notified and are working to resolve this issue.');
+			Alert.show(ObjectUtil.toString(e),'fault');
+		}
+		public function sessionFaultHandler(e:Event):void {
+			//Alert.show('An unexpected error has occurred.  We\'re sorry for the inconvenience.  We have been notified and are working to resolve this issue.');
+			Alert.show(ObjectUtil.toString(e), 'session fault');
+			//this.enabled = false;
+		}
+		public function sessionProxyHTTPServiceFault(e:Event):void {
+			//Alert.show('An unexpected error has occurred.  We\'re sorry for the inconvenience.  We have been notified and are working to resolve this issue.');
+			Alert.show(ObjectUtil.toString(e), 'session fault');
+			//this.enabled = false;
+		}
+		]]>
+	</mx:Script>
+	
+	<mx:HTTPService id="sessionProxyHTTPService" url="{sessionProxyURL}" resultFormat="text" showBusyCursor="false" result="sessionProxyHTTPServiceHandler(event)" fault="sessionProxyHTTPServiceFault(event)" />
+
+	<!-- services -->
+	<mx:RemoteObject id="appConfigService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.utils.ConfigProxy" showBusyCursor="true">
+		<mx:method name="getConfig" result="getAppConfigHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject>
+
+	<mx:RemoteObject id="sessionProxyService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.users.SessionProxy" showBusyCursor="true">
+		<mx:method name="getCurrentUser" result="getCurrentUserHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:RemoteObject id="userService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.users.RemoteUserService" showBusyCursor="true">
+		<mx:method name="saveProfile" result="profileSavedHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject>
+	<!-- **old**	
+	<mx:RemoteObject id="slideShowService" endpoint="/flex2gateway/" destination="ColdFusion" source="model.slideshows.remoteSlideShowService" showBusyCursor="true">
+		<mx:method name="getSlideShowsXML" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="getSlideShowXML" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteSlideShow" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveSlideShow" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteAttachment" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="getSlideShowComments" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteComment" result="slideShowServiceHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject> 
+	--> 
+	<mx:RemoteObject id="slideShowService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.slideshows.RemoteSlideShowService" showBusyCursor="true">
+		<mx:method name="listSlideshowsByUserID" result="getSlideshowsHandler(event)" fault="faultHandler(event)" />		
+		<mx:method name="listSlidesBySlideshowID" result="getSlidesHandler(event)" fault="faultHandler(event)" />		
+		<mx:method name="saveSlideshowInfo" result="saveSlideshowInfoHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteAttachment" result="deleteAttachmentHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listCommentsBySlideshowID" result="listCommentsBySlideshowIDHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteCommentByID" result="deleteCommentByIDHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteSlideshowByID" result="deleteSlideshowByIDHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject> 
+	<!--
+	<mx:method name="deleteSlideByID" result="deleteSlideByIDHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="uploadAttachment" result="uploadAttachmentHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="listSlideshows" result="listSlideshowsHandler(event)" fault="faultHandler(event)" />
+	
+	<mx:method name="saveNewSlide" result="saveNewSlideHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="listComments" result="listCommentsHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="deleteCommentByID" result="deleteCommentByIDHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="deleteSlideshowByID" result="deleteSlideshowByIDHandler(event)" fault="faultHandler(event)" />
+	<mx:method name="listSlides" result="listSlidesHandler(event)" fault="faultHandler(event)" />
+	-->
+	<!--
+	<mx:RemoteObject id="groupService" endpoint="/flex2gateway/" destination="ColdFusion" source="model.groups.remoteGroupService" showBusyCursor="true">
+		<mx:method name="getUserGroupsXML" result="groupServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="getPendingMembersXML" result="groupServiceHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroup" result="groupServiceHandler(event)" fault="faultHandler(event)" />
+	</mx:RemoteObject>
+	-->
+	<mx:RemoteObject id="groupService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.groups.RemoteGroupService" showBusyCursor="true">
+		<mx:method name="listGroupsByUserID" result="getUsersGroupsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listGroupMembershipsByGroupID" result="getPendingGroupMembersHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="savePendingMemberships" result="savePendingGroupMembershipsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroupInfo" result="saveGroupInfoHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveNewGroup" result="saveGroupInfoHandler(event)" fault="faultHandler(event)" />
+		<!--
+		
+		<mx:method name="readGroupMembership" result="readGroupMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteGroup" result="deleteGroupHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="getComponent" result="getComponentHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listGroups" result="listGroupsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroup" result="saveGroupHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteGroupMembership" result="deleteGroupMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listGroupMemberships" result="listGroupMembershipsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroupMembershipInfo" result="saveGroupMembershipInfoHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="readGroup" result="readGroupHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroupImage" result="saveGroupImageHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteGroupMembershipByID" result="deleteGroupMembershipByIDHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveGroupMembership" result="saveGroupMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteGroupByID" result="deleteGroupByIDHandler(event)" fault="faultHandler(event)" />
+		-->
+	</mx:RemoteObject>
+	
+	<mx:RemoteObject id="eventService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.events.RemoteEventService" showBusyCursor="true">
+		<mx:method name="listEventsByUserID" result="getUsersEventsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listEventMembershipsByEventID" result="getPendingEventMembersHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="savePendingMemberships" result="savePendingEventMembershipsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveEventInfo" result="saveEventInfoHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveNewEvent" result="saveEventInfoHandler(event)" fault="faultHandler(event)" />
+		<!--
+		
+		<mx:method name="readEventMembership" result="readEventMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteEvent" result="deleteEventHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="getComponent" result="getComponentHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listEvents" result="listEventsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveEvent" result="saveEventHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteEventMembership" result="deleteEventMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="listEventMemberships" result="listEventMembershipsHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveEventMembershipInfo" result="saveEventMembershipInfoHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="readEvent" result="readEventHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveEventImage" result="saveEventImageHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteEventMembershipByID" result="deleteEventMembershipByIDHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="saveEventMembership" result="saveEventMembershipHandler(event)" fault="faultHandler(event)" />
+		<mx:method name="deleteEventByID" result="deleteEventByIDHandler(event)" fault="faultHandler(event)" />
+		-->
+	</mx:RemoteObject>
+	
+
+	<mx:Resize duration="500" id="r1" />
+	<mx:Resize duration="500" id="resizeSlideShowList" effectEnd="fixSlideShowDisplay()" />
+	<mx:Resize duration="500" id="resizeSlideList" effectEnd="fixSlideDisplay()" />
+	<mx:Resize duration="500" id="resizeGroupList" effectEnd="fixGroupDisplay()" />
+	
+	<mx:Dissolve id="e1" duration="500" alphaFrom="1.0" alphaTo="0.0" color="#333333" />
+    <mx:Dissolve id="e2" duration="500" alphaFrom="0.0" alphaTo="1.0" color="#333333"/>
+	
+	<mx:DateFormatter id="dateFormatter" formatString="MM/DD/YYYY L:NN A" />
+	<mx:DateFormatter id="cfDateFormatter" formatString="YYYY-MM-DD JJ:NN:SS" />
+	 
+	<mx:XML id="slideMenuData">
+    	<root>
+		   	<!--<menuitem label="Edit Details" eventName="edit"/>-->
+			<menuitem label="View Slides" eventName="slides" icon="slidesImg" />
+			<menuitem label="View Presentation" eventName="view" icon="monitorImg" />
+			<menuitem type="separator"/> 
+			<menuitem label="Delete Presentation" eventName="delete" icon="deleteImg" />
+			<menuitem type="separator"/> 
+			<menuitem label="Add Attachment" eventName="addAttachment" icon="attachmentImg" />
+			<menuitem label="View Attachment" eventName="viewAttachment" enabled="{slideShowsDisplay.selectedItem.PATHTOATTACHMENT != null}" icon="viewAttachImg" />
+			<menuitem label="Delete Attachment" eventName="deleteAttachment" enabled="{slideShowsDisplay.selectedItem.PATHTOATTACHMENT != null}" icon="deleteImg" />
+			<menuitem type="separator"/> 
+			<menuitem label="Remove Password" eventName="makePublic" enabled="{slideShowsDisplay.selectedItem.PASSWORD != null}" icon="makePublicImg" />
+			<menuitem label="Publish Presentation" eventName="publish" enabled="{slideShowsDisplay.selectedItem.LASTBUILDDATE == null}" icon="publishImg" />
+			<menuitem type="separator"/> 
+			<menuitem label="Presentation Analytics" eventName="analytics" enabled="{isAnalyticsEnabled}" icon="chartImg" />
+			<menuitem label="Dedicated Room" eventName="dedicatedRoom" enabled="true" icon="collabImg" />
+	    </root>
+    </mx:XML>
+    
+	<mx:HBox width="100%" height="5%" verticalAlign="middle" paddingTop="10" paddingBottom="0" paddingLeft="10" paddingRight="10">
+		<i:SmoothImage source="{logo}" mouseOver="logoImg.source = logoAlt;" mouseOut="logoImg.source = logo;" toolTip="Go to the SlideSix homepage" id="logoImg" click="goToSlideSix()" buttonMode="true" />
+		<i:SmoothImage source="@Embed(source='assets/mgmt_console.png')" />
+		
+		<mx:Spacer width="100%" />
+		<mx:Button id="showUploadBtn" styleName="redbtn" label="Upload/Import" click="openUploadWindow()" enabled="true" toolTip="Upload presentation(s)" icon="{powerpointImg}" />
+		<!-- <mx:Button id="showImportBtn" label="Import" click="openImportWindow()" toolTip="Import presentation(s) from Google Docs" icon="{powerpointImg}" /> -->
+		<mx:Button id="togglePresos" label="My Presentations" click="goToPresoView()" toolTip="View your uploaded presentations" icon="{presosImg}" />
+		<mx:Button id="toggleSlides" label="Slides" enabled="{slideShowsDisplay.selectedIndex != -1}" click="goToSlideView()" toolTip="{slideShowsDisplay.selectedIndex == -1 ? 'Select A Presentation' : 'View slides associated with this presentation (shortcut: double click a presentation to view slides)'}" icon="{slidesImg}" alpha="{toggleSlides.enabled ? 1.0 : 0.5}" />
+		<mx:Button id="showProfileBtn" label="Profile" click="goToProfileView()" icon="@Embed(source='assets/user_edit.png')" toolTip="Edit your profile or upload a new user pic" />
+		<mx:Button id="showGroupsBtn" label="Groups" click="goToGroupView()" icon="@Embed(source='assets/group.png')" toolTip="Manage your groups and pending memberships" />
+		<mx:Button id="showEventsBtn" label="Events" click="goToEventView()" icon="@Embed(source='assets/group.png')" toolTip="Manage your events and pending memberships" />
+		<mx:Button id="openHelpWindowBtn" label="Help" click="openHelpWindow('helpMenu')" toolTip="Get Help for the Management Console" icon="{helpImg}" />
+		<!-- <mx:Button id="toggleFSButton" label="FullScreen" click="toggleFullScreen();" icon="{isInFullScreen ? exitFullscreenImg : fullscreenImg}" toolTip="Toggle in/out of fullscreen mode" /> -->
+		<mx:Button id="logoutBtn" label="Logout" click="logout();" icon="@Embed(source='assets/door_out.png')" toolTip="Log out of this application (only if you promise to come back soon)" />
+	</mx:HBox>
+	
+	<mx:ViewStack id="mainStack" width="100%" height="100%" change="stackChanged(event)" horizontalScrollPolicy="off" paddingTop="0" paddingBottom="0" paddingLeft="10" paddingRight="10">
+		
+		<mx:HBox width="100%" height="99%" id="presoView" hideEffect="e1" showEffect="e2" horizontalGap="{presoEdit.visible ? 10 : 0}" horizontalScrollPolicy="off" horizontalAlign="center">
+		
+				<mx:Panel id="presoList" resizeEffect="resizeSlideShowList" title="My Presentations" width="{presoEdit.visible ? (presoView.width * .48) - presoView.getStyle('horizontalGap') : presoView.width - 2}" height="100%">
+					<!--
+					<mx:HBox width="100%" id="presoToolbar" styleName="searchContainer">
+						<mx:Button id="viewPresoBtnDup" alpha="{viewPresoBtnDup.enabled ? 1.0 : 0.4}" label="View" click="openPresoViewWindow()" enabled="{slideShowsDisplay.selectedIndex != -1}" toolTip="{slideShowsDisplay.selectedIndex == -1 ? 'Select A Presentation' : 'View this presentation on SlideSix (opens in new window)'}" icon="{viewPresoImg}" />
+						<mx:Button icon="{menuTriggerImg}" label="Options" id="menuToggleBtn" click="showMenu(event)" enabled="{slideShowsDisplay.selectedIndex != -1}" toolTip="{slideShowsDisplay.selectedIndex == -1 ? 'Select A Presentation' : 'Advanced Options for this presentation'}" alpha="{menuToggleBtn.enabled ? 1.0 : 0.4}" />
+					</mx:HBox>
+					-->
+					<mx:TileList id="slideShowsDisplay" dataProvider="{slideshows}" borderStyle="none" 
+						labelField="TITLE" itemRenderer="com.slidesix.renderers.CustomSlideShowRenderer" height="100%" width="100%" 
+						columnWidth="170" rowHeight="150" columnCount="4" backgroundAlpha="0.0" click="slideShowSelected(event)"
+						doubleClick="slideShowDblClick(event)" doubleClickEnabled="true" />
+					<mx:ControlBar height="45" id="presoListControlBar">
+						<mx:HBox width="100%" styleName="searchContainer">
+							<mx:Label text="Search" />
+							<mx:TextInput id="presoSearchString" width="{presoEdit.width &gt; 0 ? 125 : 150}" keyUp="filterPresentations()" enabled="{slideshows.length &gt; 0}" toolTip="{presoSearchString.enabled ? 'Enter a search term' : 'Search disabled, you have not yet uploaded a presentation'}" />
+							<mx:Spacer width="100%" />
+							<mx:Label text="Sort By" />
+							<mx:ComboBox id="presoSortColumn" dataProvider="{presoSortOptions}" change="sortNew();" enabled="{slideshows.length &gt; 0}" toolTip="{presoSortColumn.enabled ? '' : 'You have not yet uploaded a presentation'}" styleName="dropDown" width="{presoEdit.width &gt; 0 ? 115 : 150}" />
+							<mx:Button id="reverseSortOrderBtn" label="{presoEdit.width &gt; 0 ? '' : 'Reverse'}" click="sortPresentations()" icon="@Embed(source='assets/arrow_rotate_clockwise.png')" toolTip="{reverseSortOrderBtn.enabled ? 'Reverse the order in which your presentations are sorted' : 'You have not yet uploaded a presentation'}" enabled="{slideshows.length &gt; 0}" />
+							<mx:Button id="refreshPresosBtn" label="{presoEdit.width &gt; 0 ? '' : 'Refresh'}" click="getSlideShows()" toolTip="{refreshPresosBtn.enabled ? 'Refresh your presentations' : 'You have not yet uploaded a presentation'}" icon="@Embed(source='assets/arrow_refresh.png')" enabled="true" />
+						</mx:HBox>
+					</mx:ControlBar>
+				</mx:Panel>
+			
+			<mx:Panel id="presoEdit" resizeEffect="r1" minWidth="{slideShowsDisplay.selectedIndex != -1 ? presoView.width * .48 : 0}" width="{slideShowsDisplay.selectedIndex != -1 ? (presoView.width * .52) : 0}" height="{mainStack.height}" visible="{slideShowsDisplay.selectedIndex != -1}" enabled="{slideShowsDisplay.selectedIndex != -1}" disabledOverlayAlpha="0.1" toolTip="{presoEdit.enabled ? '' : 'Select A Presentation'}" title="{slideShowsDisplay.selectedItem.TITLE}">
+				
+				<mx:TabNavigator id="presoEditTabNav" height="{presoEdit.height - 80}" width="100%" tabWidth="150">
+						
+					<mx:VBox id="presoProperties" label="Properties" height="100%">
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Title" width="20%" />
+							<mx:TextInput id="editSlideShowTitle" text="{slideShowsDisplay.selectedItem.TITLE}" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Abstract" width="20%" />
+							<mx:TextArea id="editAbstract" text="{slideShowsDisplay.selectedItem.ABSTRACT}" width="80%" height="150" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Group" width="20%" />
+							<mx:ComboBox id="editGroupID" dataProvider="{groups}" prompt="Select Group" labelField="NAME" width="80%" styleName="dropDown" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Tags" width="20%" />
+							<mx:TextInput id="editTags" text="{slideShowsDisplay.selectedItem.TAGLIST}" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Event(s)" width="20%" />
+							<mx:List id="editEvents" dataProvider="{events}" labelField="NAME" height="100" width="80%" allowMultipleSelection="true" styleName="dropDown" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="On Behalf Of (Name)" width="20%" />
+							<mx:TextInput id="editCreditName" text="{slideShowsDisplay.selectedItem.CREDITNAME}" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="On Behalf of (URL)" width="20%" />
+							<mx:TextInput id="editCreditURL" text="{slideShowsDisplay.selectedItem.CREDITURL}" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Password" width="20%" />
+							<mx:TextInput id="editSlideShowPassword" displayAsPassword="true" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Repeat Password" width="20%" />
+							<mx:TextInput id="editRepeatPassword" displayAsPassword="true" width="80%" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="" width="20%" />
+							<mx:CheckBox id="editAllowComments" selected="{slideShowsDisplay.selectedItem.ALLOWCOMMENTS == 1 ? true : false}" width="80%" label="Allow comments on this presentation." />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="" width="20%" />
+							<mx:CheckBox id="editNotifyComments" selected="{slideShowsDisplay.selectedItem.NOTIFYCOMMENTS == 1 ? true : false}" width="80%" label="Notify me when comments are posted to this presentation." />
+						</mx:HBox>
+					</mx:VBox>
+					
+					<mx:VBox id="metaTabNavTabOne" label="Stats / Info">
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Private?" width="20%" />
+							<mx:TextInput id="privateDisplay" width="80%" text="{slideShowsDisplay.selectedItem.PASSWORD != null ? 'Yes' : 'No'}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Created On" width="20%" />
+							<mx:TextInput id="createdOnDisplay" width="80%" text="{slideShowsDisplay.selectedItem.CREATEDON}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Published On" width="20%" />
+							<mx:TextInput id="lastBuildDateDisplay" width="80%" text="{slideShowsDisplay.selectedItem.LASTBUILDDATE}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Embedded Views" width="20%" />
+							<mx:TextInput id="embeddedViewsDisplay" width="80%" text="{slideShowsDisplay.selectedItem.NUMEMBEDDEDVIEWS}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Views" width="20%" />
+							<mx:TextInput id="viewsDisplay" width="80%" text="{slideShowsDisplay.selectedItem.NUMVIEWS}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Favorites" width="20%" />
+							<mx:TextInput id="favoritesDisplay" width="80%" text="{slideShowsDisplay.selectedItem.NUMFAVORITES}" editable="false" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Rank" width="20%" />
+							<mx:TextInput id="rankDisplay" width="80%" text="{slideShowsDisplay.selectedItem.AVGRANK}" editable="false" />
+						</mx:HBox>
+					
+					</mx:VBox>
+					<mx:VBox id="metaTabNavTabTwo" label="Comments ({slideShowsDisplay.selectedItem.NUMCOMMENTS})" enabled="{slideShowsDisplay.selectedIndex != -1}" paddingLeft="10" paddingRight="10">
+						<mx:HBox paddingBottom="5" paddingTop="5">
+							<mx:Text fontWeight="bold" width="100%" text="No Comments Found." visible="{slideShowComments.length == 0}" />	
+						</mx:HBox>
+						<mx:DataGrid id="slideShowCommentGrid" dataProvider="{slideShowComments}" height="70%" width="100%" editable="true">
+							<mx:columns>
+								<mx:DataGridColumn headerText="Commenter" dataField="NAME" sortable="true" headerWordWrap="true" editable="false" />
+								<mx:DataGridColumn headerText="Commented On" dataField="CREATEDON" sortable="true" headerWordWrap="true" editable="false">
+									<mx:itemRenderer>
+							        	<mx:Component>
+							            	<mx:VBox>
+							            		<mx:DateFormatter id="df" formatString="MM/DD/YYYY L:NN A" />
+						                    	<mx:Label text="{df.format(data.CREATEDON)}" />
+					                    	</mx:VBox>
+				                     	</mx:Component>
+			                    	</mx:itemRenderer>
+								</mx:DataGridColumn>
+								<mx:DataGridColumn headerText="URL" dataField="URL" sortable="true" headerWordWrap="true" editable="false" />
+								<mx:DataGridColumn headerText="" dataField="ID" width="0" sortable="true" headerWordWrap="true" editable="false" />
+							</mx:columns>
+						</mx:DataGrid>
+						<mx:TextArea id="slideShowComment" text="{slideShowCommentGrid.selectedItem.COMMENT}" width="100%" height="80" editable="false" />
+					</mx:VBox>
+				</mx:TabNavigator>
+				<mx:ControlBar height="45">
+					<mx:Spacer width="100%" />
+					<mx:Button id="deleteCommentButton" label="Delete Comment" visible="{presoEditTabNav.selectedIndex == 2}" width="{presoEditTabNav.selectedIndex == 2 == 1 ? 220 : 0}" enabled="{slideShowCommentGrid.selectedIndex != -1}" click="deleteCommentClicked(event)" icon="{deleteImg}" toolTip="Delete Comment" />
+					<mx:Button id="savePresoPropertiesBtn" label="Save Presentation" visible="{presoEditTabNav.selectedIndex == 0}" width="{presoEditTabNav.selectedIndex == 0 ? 220 : 0}" click="savePresoClicked(false,false)" icon="{saveImg}" toolTip="Save presentation" />
+				</mx:ControlBar>
+			</mx:Panel>
+		</mx:HBox>
+		
+		<mx:HBox id="slideListView" width="100%" height="100%" hideEffect="e1" showEffect="e2" horizontalGap="{slideDisplay.selectedIndex != -1 ? 10 : 0}" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+	
+			<mx:Panel title="Slides For: {slideShowsDisplay.selectedItem.TITLE}" resizeEffect="resizeSlideList" id="slideList" height="100%" width="{slideDisplay.selectedIndex != -1 ? 360 : slideListView.width - 2}">
+				<mx:TileList id="slideDisplay" dataProvider="{slides}" borderStyle="none" 
+					labelField="TITLE" itemRenderer="com.slidesix.renderers.CustomSlideRenderer" height="100%" width="100%" click="slideSelected(event)"
+					columnWidth="170" rowHeight="130" columnCount="4" backgroundAlpha="0.0" doubleClickEnabled="true" doubleClick="showMediaWindow()" />	
+			</mx:Panel>
+			
+			<mx:Canvas width="{slideDetail.visible ? (slideListView.width - slideList.width) - slideListView.getStyle('horizontalGap') : 0}" height="100%" >
+				<mx:Panel id="slideDetail" resizeEffect="r1" width="100%" visible="{slideDisplay.selectedIndex != -1}" height="100%" verticalAlign="middle" horizontalAlign="center" horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		
+					<i:SmoothImage id="slideImage" source="{storeBaseURL + slideDisplay.selectedItem.PATHTOSLIDE}" width="100%" height="100%" maintainAspectRatio="true" cacheAsBitmap="true" scaleContent="true" dataChange="e1" showEffect="e2" verticalAlign="middle" horizontalAlign="center" complete="setImgSize()" toolTip="{slideDisplay.selectedItem.TITLE}" />
+					
+				</mx:Panel>
+				
+				<mx:HBox top="5" right="5" width="100%" id="slideControlBar" resizeEffect="r1">
+					<mx:Spacer width="100%" />
+					 
+					<mx:HBox id="slideControls">
+						<mx:Button id="viewPresoBtn" label="View" click="openPresoViewWindow()" enabled="{slideShowsDisplay.selectedIndex != -1}" toolTip="{slideShowsDisplay.selectedIndex == -1 ? 'Select A Presentation' : 'View this presentation on SlideSix (opens in new window)'}" icon="{viewPresoImg}" alpha="{viewPresoBtn.enabled ? 1.0 : 0.5}" />
+						<mx:Button id="showNotesWindowBtn" label="Notes" click="showNotesWindow()" enabled="{slideDisplay.selectedIndex != -1}" toolTip="{showMediaWindowBtn.enabled ? 'Slide Notes' : 'Select a slide'}" icon="{notesImg}" alpha="{showNotesWindowBtn.enabled ? 1.0 : 0.5}" styleName="headerBtn" />
+						<mx:Button id="showMediaWindowBtn" label="Narrate" click="showMediaWindow()" enabled="{slideDisplay.selectedIndex != -1}" toolTip="{showMediaWindowBtn.enabled ? 'Open media window to record audio/video for this slide (shortcut: double click a slide to open the media window)' : 'Select a slide'}" icon="{webcamImg}" alpha="{showMediaWindowBtn.enabled ? 1.0 : 0.5}" styleName="headerBtn" />
+						<mx:Button id="playMediaWindowBtn" label="View Narration" click="showMediaWindow()" enabled="{slideDisplay.selectedIndex != -1 &amp;&amp; slideDisplay.selectedItem.HASMEDIA}" toolTip="{playMediaWindowBtn.enabled ? 'Open media window to view audio/video that you have recorded here at SlideSix for this slide' : 'Select a slide that has recorded narration'}" icon="{monitorImg}" alpha="{playMediaWindowBtn.enabled ? 1.0 : 0.5}" styleName="headerBtn" />
+						
+						<mx:Button id="showExternalMediaSearchBtn" label="Video" click="showExternalMediaSearchWindow()" enabled="{slideDisplay.selectedIndex != -1}" toolTip="{showExternalMediaSearchBtn.enabled ? 'Search for external media (YouTube, Vimeo) to associate with this slide.' : 'Select a slide'}" icon="{mediaImg}" alpha="{showExternalMediaSearchBtn.enabled ? 1.0 : 0.5}" styleName="headerBtn" />
+						<mx:Button id="playExternalMediaSearchBtn" label="Watch" click="showExternalMediaPlayWindow(slideDisplay.selectedItem.EXTERNALMEDIAID, slideDisplay.selectedItem.EXTERNALMEDIASOURCE)" enabled="{slideDisplay.selectedIndex != -1 &amp;&amp; slideDisplay.selectedItem.EXTERNALMEDIAID != null}" toolTip="{playExternalMediaSearchBtn.enabled ? 'View the video that is currently attached to this slide' : 'Select a slide that has external media attached to it'}" icon="{monitorImg}" alpha="{playExternalMediaSearchBtn.enabled ? 1.0 : 0.5}" styleName="headerBtn" />
+					</mx:HBox>
+				</mx:HBox>
+				
+				<mx:HBox bottom="10" right="15">
+					<mx:HSlider id="slideScale" minimum="1" maximum="100" value="100" dataTipPlacement="top" tickColor="black" snapInterval="1" tickInterval="10" labels="['0%','100%']" allowTrackClick="true" liveDragging="true" enabled="{slideDisplay.selectedIndex != -1}" width="100" change="slideImage.width = initialSlideWidth * (slideScale.value / 100)" toolTip="Scale this slide (helpful when recording video or writing notes)" />
+				</mx:HBox>
+				
+			</mx:Canvas>
+			
+		</mx:HBox>
+		
+		<mx:HBox id="profileView" width="100%" height="100%" hideEffect="e1" showEffect="e2">
+			<mx:Panel title="My Profile" id="profileContainer" width="{profileView.width-10}" visible="true" height="100%" verticalAlign="top" horizontalAlign="center" resizeEffect="r1">
+				
+				<mx:HBox styleName="formContainer" width="100%" horizontalAlign="left">
+					<mx:VBox width="100%">
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Email" width="25%" />
+							<mx:TextInput id="editProfileEmail" text="{currentUser.EMAIL}" width="75%" maxChars="500" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="First Name" width="25%" />
+							<mx:TextInput id="editProfileFirstName" text="{currentUser.FIRSTNAME}" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Last Name" width="25%" />
+							<mx:TextInput id="editProfileLastName" text="{currentUser.LASTNAME}" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Disqus Short Name" width="25%" />
+							<mx:TextInput id="editDisqusShortName" text="{currentUser.DISQUSSHORTNAME}" width="75%" maxChars="500" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Password" width="25%" />
+							<mx:TextInput id="editProfilePassword" displayAsPassword="true" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Repeat Password" width="25%" />
+							<mx:TextInput id="editProfileRepeatPassword" displayAsPassword="true" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Bio" width="25%" />
+							<mx:TextArea id="editProfileBio" text="{currentUser.BIO}" width="75%" height="200" maxChars="3000" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Dedicated Room Password" width="25%" />
+							<mx:TextInput id="editDedicatedRoomPassword" displayAsPassword="true" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label id="editDedicatedRoomRepeatPasswordLabel" text="Repeat Dedicated Room Password" width="25%" />
+							<mx:TextInput id="editDedicatedRoomRepeatPassword" displayAsPassword="true" width="75%" maxChars="50" />
+						</mx:HBox>
+						<mx:HBox id="remoteDedicatedRoomPasswordGroup" styleName="formContainer" width="100%" visible="{currentUser.DEDICATEDROOMPASSWORD != null &amp;&amp; currentUser.DEDICATEDROOMPASSWORD != null}">
+							<mx:Label text="" width="{editDedicatedRoomRepeatPasswordLabel.width}" />
+							<mx:CheckBox id="removeDedicatedRoomPassword" />
+							<mx:Text text=" Remove Dedicated Room Password (Your Room Is Currently Private.  Check Here And Save To Make Your Room Public)" width="80%" />
+						</mx:HBox>
+					</mx:VBox>
+					<mx:VBox verticalAlign="middle">
+						<mx:Image source="{storeBaseURL + currentUser.PATHTOIMAGE}" id="userImg" styleName="groupImage" />
+					</mx:VBox>
+				</mx:HBox>
+
+				<mx:ControlBar id="editProfileControlBar" height="45">
+					<mx:Spacer width="100%" />
+					<mx:Button id="uploadProfilePicBtn" label="Upload Profile Pic" click="userImageSelect()" icon="{picImg}" />
+					<mx:Button id="viewProfileBtn" label="View Profile" click="viewProfile()" icon="@Embed(source='assets/user_go.png')" toolTip="View profile (opens in a new window)" />
+					<mx:Button id="saveProfileBtn" label="Save Profile" click="saveProfileClicked(event)" icon="{saveImg}" />
+				</mx:ControlBar>
+			</mx:Panel>
+			
+		</mx:HBox>	
+		<mx:HBox id="groupView" width="100%" height="100%" hideEffect="e1" showEffect="e2">
+			<mx:Panel title="My Groups" id="groupList" height="100%" width="{groupDisplay.selectedIndex != -1 ? (groupView.width * .52) - groupView.getStyle('horizontalGap') : groupView.width - groupView.getStyle('horizontalGap')}" resizeEffect="resizeGroupList">
+			<mx:TileList id="groupDisplay" dataProvider="{groups}" borderStyle="none" 
+				labelField="NAME" itemRenderer="com.slidesix.renderers.CustomGroupRenderer" height="{groupList.height - 80}" width="100%"
+				columnWidth="170" rowHeight="170" columnCount="4" backgroundAlpha="0.0" click="groupSelected(event)" />	
+				<mx:ControlBar height="45">
+					<mx:Spacer width="100%" />
+					<mx:Button id="newGroupImgBtn" label="Group Pic" click="groupImageSelect()" enabled="{groupDisplay.selectedIndex != -1 &amp;&amp; groupDisplay.selectedItem.ISOWNER ? true : false}" toolTip="{newGroupImgBtn.enabled ? 'Upload an image for your group' : 'Choose a group that you are the owner of'}" icon="{picImg}" />
+					<mx:Button id="viewGroupBtn" label="View Group" click="viewGroup()" icon="@Embed(source='assets/group_go.png')" toolTip="{viewGroupBtn.enabled ? 'View this groups page (opens new window)' : 'Choose a group'}" enabled="{groupDisplay.selectedIndex != -1}" />
+					<mx:Button id="newGroupBtn" label="New Group" click="newGroup()" icon="@Embed(source='assets/group_add.png')" toolTip="Create a new group" />
+				</mx:ControlBar>
+			</mx:Panel>
+			 
+			<mx:Panel id="groupEdit" height="100%" width="{groupDisplay.selectedIndex != -1 ? groupView.width * .48 : 0}" visible="{groupDisplay.selectedIndex != -1 }" title="{groupDisplay.selectedIndex != -1 ? groupDisplay.selectedItem.ISOWNER ? groupDisplay.selectedItem.NAME : 'Only Group Owners May Edit A Group' : 'Select A Group'}" resizeEffect="r1">
+				<mx:TabNavigator id="groupEditTabNav" height="100%" width="100%" enabled="{groupDisplay.selectedItem.ISOWNER}">
+					
+					<mx:VBox id="groupTabNavTabOne" label="Edit Group" enabled="{groupDisplay.selectedIndex != -1}">
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Group Name" width="30%" />
+							<mx:TextInput id="editGroupName" width="70%" text="{groupDisplay.selectedItem.NAME}" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Description" width="30%" />
+							<mx:TextArea id="editGroupDescription" text="{groupDisplay.selectedItem.DESCRIPTION}" width="70%" height="100" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Auto Approve Members?" width="30%" />
+							<mx:CheckBox id="editGroupAutoAcceptUsers" width="70%" selected="{groupDisplay.selectedItem.AUTOACCEPTMEMBERS}" change="groupDisplay.selectedItem.AUTOACCEPTMEMBERS = editGroupAutoAcceptUsers.selected;" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Spacer width="100%" />
+							<mx:Button id="saveGroupBtn" label="Save Group" click="saveGroupClicked(event)" icon="{saveImg}" />
+						</mx:HBox>
+						
+					</mx:VBox>
+					<mx:VBox id="groupTabNavTabTwo" label="{'Pending Members (' + groupDisplay.selectedItem.PENDINGMEMBERS +')'}" enabled="{groupDisplay.selectedIndex != -1}">
+						<mx:DataGrid id="pendingGroupMembersGrid" width="100%" height="{groupTabNavTabTwo.height - 50}" dataProvider="{pendingGroupMembers}" editable="true">
+							<mx:columns>
+								<mx:DataGridColumn headerText="Approve/Deny" dataField="approved" itemRenderer="com.slidesix.renderers.GroupMembershipRenderer" editable="false" width="140" />
+								<mx:DataGridColumn headerText="User Name" editable="false">
+									<mx:itemRenderer>
+										<mx:Component>
+											<mx:Text text="{data.FIRSTNAME} {data.LASTNAME}" />
+										</mx:Component>
+									</mx:itemRenderer>
+								</mx:DataGridColumn>
+							</mx:columns>
+						</mx:DataGrid>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Spacer width="100%" />
+							<mx:Button id="savePendingGroupMembershiptsBtn" label="Save Memberships" click="saveGroupMembershipsClicked(event)" enabled="{pendingGroupMembersGrid.dataProvider.length}" icon="{saveImg}" alpha="{savePendingGroupMembershiptsBtn.enabled ? 1.0 : 0.5}" />
+						</mx:HBox>
+					</mx:VBox>
+				</mx:TabNavigator>
+			</mx:Panel>
+		</mx:HBox> 
+		
+		<mx:HBox id="eventView" width="100%" height="100%" hideEffect="e1" showEffect="e2">
+			<mx:Panel title="My Events" id="eventList" height="100%" width="{eventDisplay.selectedIndex != -1 ? (eventView.width * .52) - eventView.getStyle('horizontalGap') : eventView.width - eventView.getStyle('horizontalGap')}" resizeEffect="resizeEventList">
+			<mx:TileList id="eventDisplay" dataProvider="{events}" borderStyle="none" 
+				labelField="NAME" itemRenderer="com.slidesix.renderers.CustomEventRenderer" height="{eventList.height - 80}" width="100%"
+				columnWidth="170" rowHeight="170" columnCount="4" backgroundAlpha="0.0" click="eventSelected(event)" />	
+				<mx:ControlBar height="45">
+					<mx:Spacer width="100%" />
+					<mx:Button id="newEventImgBtn" label="Event Pic" click="eventImageSelect()" enabled="{eventDisplay.selectedIndex != -1 &amp;&amp; eventDisplay.selectedItem.ISOWNER ? true : false}" toolTip="{newEventImgBtn.enabled ? 'Upload an image for your event' : 'Choose a event that you are the owner of'}" icon="{picImg}" />
+					<mx:Button id="newEventBannerImgBtn" label="Event Banner Image" click="eventBannerImageSelect()" enabled="{eventDisplay.selectedIndex != -1 &amp;&amp; eventDisplay.selectedItem.ISOWNER ? true : false}" toolTip="{newEventBannerImgBtn.enabled ? 'Upload a banner image for your event' : 'Choose a event that you are the owner of'}" icon="{picImg}" />
+					<mx:Button id="viewEventBtn" label="View Event" click="viewEvent()" icon="@Embed(source='assets/group_go.png')" toolTip="{viewEventBtn.enabled ? 'View this events page (opens new window)' : 'Choose a event'}" enabled="{eventDisplay.selectedIndex != -1}" />
+					<mx:Button id="newEventBtn" label="New Event" click="newEvent()" icon="@Embed(source='assets/group_add.png')" toolTip="Create a new event" />
+				</mx:ControlBar>
+			</mx:Panel>
+			 
+			<mx:Panel id="eventEdit" height="100%" width="{eventDisplay.selectedIndex != -1 ? eventView.width * .48 : 0}" visible="{eventDisplay.selectedIndex != -1 }" title="{eventDisplay.selectedIndex != -1 ? eventDisplay.selectedItem.ISOWNER ? eventDisplay.selectedItem.NAME : 'Only Event Owners May Edit A Event' : 'Select A Event'}" resizeEffect="r1">
+				<mx:TabNavigator id="eventEditTabNav" height="{eventEdit.height - 80}" width="100%" enabled="{eventDisplay.selectedItem.ISOWNER}">
+					
+					<mx:VBox id="eventTabNavTabOne" label="Edit Event" enabled="{eventDisplay.selectedIndex != -1}">
+						
+						<mx:HBox width="{eventEdit.width - 20}">
+							<i:SmoothImage id="eventBannerImg" source="{storeBaseURL + eventDisplay.selectedItem.PATHTOBANNERIMAGE}" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Event Name" width="30%" />
+							<mx:TextInput id="editEventName" width="70%" text="{eventDisplay.selectedItem.NAME}" maxChars="255" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Brief Description" width="30%" />
+							<mx:TextArea id="editEventDescriptionShort" text="{eventDisplay.selectedItem.DESCRIPTIONSHORT}" width="70%" height="60" maxChars="300" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Full Description" width="30%" />
+							<mx:TextArea id="editEventDescriptionFull" text="{eventDisplay.selectedItem.DESCRIPTIONFULL}" width="70%" height="100" maxChars="2000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Start Date" width="30%" />
+							<mx:DateField selectedDate="{eventDisplay.selectedItem.STARTDATE != null ? eventDisplay.selectedItem.STARTDATE : null}" id="editEventStartDate" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="End Date" width="30%" />
+							<mx:DateField selectedDate="{eventDisplay.selectedItem.ENDDATE != null ? eventDisplay.selectedItem.ENDDATE : null}" id="editEventEndDate" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Venue Info" width="30%" />
+							<mx:TextArea id="editEventVenueName" width="70%" text="{eventDisplay.selectedItem.VENUE}" maxChars="500" height="60" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Track Info" width="30%" />
+							<mx:TextArea id="editEventTracks" width="70%" text="{eventDisplay.selectedItem.TRACKS}" maxChars="500" height="60" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Cost Info" width="30%" />
+							<mx:TextArea id="editEventCostInfo" text="{eventDisplay.selectedItem.COSTINFO}" width="70%" height="100" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Organizer Info" width="30%" />
+							<mx:TextArea id="editEventOrganizerInfo" text="{eventDisplay.selectedItem.ORGANIZERINFO}" width="70%" height="100" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="External Web Site (URL)" width="30%" />
+							<mx:TextInput id="editEventExternalHomepageURL" width="70%" text="{eventDisplay.selectedItem.EXTERNALHOMEPAGEURL}" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="RSS Feed (URL)" width="30%" />
+							<mx:TextInput id="editEventRSSURL" width="70%" text="{eventDisplay.selectedItem.RSSURL}" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Schedule (URL)" width="30%" />
+							<mx:TextInput id="editEventScheduleURL" width="70%" text="{eventDisplay.selectedItem.SCHEDULEURL}" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Contact (URL)" width="30%" />
+							<mx:TextInput id="editEventContactURL" width="70%" text="{eventDisplay.selectedItem.CONTACTURL}" maxChars="1000" />
+						</mx:HBox>
+						
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Label text="Auto Approve Members?" width="30%" />
+							<mx:CheckBox id="editEventAutoAcceptUsers" width="70%" selected="{eventDisplay.selectedItem.AUTOACCEPTMEMBERS}" change="eventDisplay.selectedItem.AUTOACCEPTMEMBERS = editEventAutoAcceptUsers.selected;" />
+						</mx:HBox>
+						<mx:HBox styleName="formContainer" width="100%">
+							<mx:Spacer width="100%" />
+							
+						</mx:HBox>
+						
+					</mx:VBox>
+					<mx:VBox id="eventTabNavTabTwo" label="{'Pending Members (' + eventDisplay.selectedItem.PENDINGMEMBERS +')'}" enabled="{eventDisplay.selectedIndex != -1}">
+						<mx:DataGrid id="pendingEventMembersGrid" width="100%" height="100%" dataProvider="{pendingEventMembers}" editable="true">
+							<mx:columns>
+								<mx:DataGridColumn headerText="Approve/Deny" dataField="approved" itemRenderer="com.slidesix.renderers.EventMembershipRenderer" editable="false" width="140" />
+								<mx:DataGridColumn headerText="User Name" editable="false">
+									<mx:itemRenderer>
+										<mx:Component>
+											<mx:Text text="{data.FIRSTNAME} {data.LASTNAME}" />
+										</mx:Component>
+									</mx:itemRenderer>
+								</mx:DataGridColumn>
+							</mx:columns>
+						</mx:DataGrid>
+					</mx:VBox>
+				</mx:TabNavigator>
+				<mx:ControlBar height="45">
+					<mx:Spacer width="100%" />
+					<mx:Button id="savePendingEventMembershiptsBtn" label="Save Memberships" width="{savePendingEventMembershiptsBtn.visible ? 200 : 0}" click="saveEventMembershipsClicked(event)" visible="{eventEditTabNav.selectedIndex == 1}" enabled="{pendingEventMembersGrid.dataProvider.length}" icon="{saveImg}" alpha="{savePendingEventMembershiptsBtn.enabled ? 1.0 : 0.5}" />
+					<mx:Button id="saveEventBtn" label="Save Event" visible="{eventEditTabNav.selectedIndex == 0}" width="{saveEventBtn.visible ? 200 : 0}" click="saveEventClicked(event)" icon="{saveImg}" />
+				</mx:ControlBar>
+			</mx:Panel>
+		</mx:HBox>
+	</mx:ViewStack>
+	<mx:HBox id="statusBar" width="100%" height="3%" verticalAlign="middle" paddingTop="0" paddingBottom="0" paddingLeft="10" paddingRight="10">
+		<mx:Text id="statusMsg" />
+		<mx:Spacer width="100%" />
+		<mx:ProgressBar id="loadBar" width="300" indeterminate="true" label="" visible="false" labelPlacement="right" />
+	</mx:HBox>
+</mx:Application>

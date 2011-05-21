@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml" borderAlpha="0.9" show="init();" x="20" y="20" width="335" height="400" title="Slide Media ({parentApplication.slideDisplay.selectedItem.TITLE != null ? parentApplication.slideDisplay.selectedItem.TITLE : parentApplication.slideDisplay.selectedItem.TITLE.substr(0,25) + '...'})" showCloseButton="true">
+	<mx:Script>
+		<![CDATA[
+			import flash.events.*;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.utils.ObjectUtil;
+			import mx.utils.UIDUtil;
+		
+			public var rtmpBaseURL:String;
+			public var alias:String;
+			public var slideID:String;
+			
+			private var connection:NetConnection = new NetConnection();
+			private var stream:NetStream;
+			private var video:Video;
+			private var rtmpURL:String;
+			private var cam:Camera;
+			private var mic:Microphone;
+			
+			[Bindable] private var isRecording:Boolean;
+			[Bindable] private var isPlaying:Boolean;
+			[Bindable] private var useCam:Boolean = true;
+			[Bindable] private var useMic:Boolean = true;
+			[Bindable] private var hasMic:Boolean = false;
+			[Bindable] private var hasCam:Boolean = false;
+			[Bindable] public var mediaExists:Boolean = false;
+			[Bindable] [Embed(source = '../../assets/record_on.png')] private var recordImg:Class;
+			[Bindable] [Embed(source = '../../assets/record_off.png')] private var recordOffImg:Class;
+			[Bindable] [Embed(source = '../../assets/help.png')] private var helpImg:Class;
+			[Bindable] [Embed(source = '../../assets/webcam_delete.png')] private var camOffImg:Class;
+			[Bindable] [Embed(source = '../../assets/webcam_add.png')] private var camOnImg:Class;
+			[Bindable] [Embed(source = '../../assets/stop.png')] private var stopImg:Class;
+			[Bindable] [Embed(source = '../../assets/play.png')] private var playImg:Class;
+			[Bindable] [Embed(source = '../../assets/delete.png')] private var deleteImg:Class;
+			
+			public var streamName:String;
+			
+			public function init():void {
+				isRecording = false;
+				isPlaying = false;
+				
+				useCam = true;
+				useMic = true;
+				
+				if (parentApplication.slideDisplay.selectedItem.HASMEDIA) {
+					mediaExists = true;
+				}
+				else {
+					mediaExists = false;
+				}
+				
+				if (Camera.names.length > 0) {
+					hasCam = true;
+					selectedCam.selectedIndex = 0;
+					cam = Camera.getCamera();
+					cam.setQuality(0, 90);
+					cam.setKeyFrameInterval(5);
+					cam.setMode(320, 240, 15);
+				}
+				
+				if (Microphone.names.length > 0) {
+					hasMic = true;
+					mic = Microphone.getMicrophone();
+					mic.rate = 44;
+				}
+				rtmpURL = rtmpBaseURL + alias + '/';
+				connection.addEventListener(NetStatusEvent.NET_STATUS, netStatusHandler);
+				connection.addEventListener(SecurityErrorEvent.SECURITY_ERROR, securityErrorHandler);
+				connection.connect(rtmpURL);
+				this.addEventListener(CloseEvent.CLOSE, closeHandler);
+				
+				streamName = slideID;
+			}
+			
+			public function setCam():void {
+				var c:String = '';
+				
+				try {
+					c = selectedCam.selectedIndex.toString();
+				}
+				catch (e:Error) {
+					Alert.show(e.message);
+				}
+				
+				cam = Camera.getCamera(c);
+				cam.setQuality(0, 90);
+				cam.setKeyFrameInterval(5);
+				cam.setMode(320, 240, 15);
+				video.attachCamera(cam);
+				stream.attachCamera(cam);
+			}
+			
+			public function closeHandler(e:Event):void {
+				//PopUpManager.removePopUp(this);
+				if (isPlaying || isRecording) stop();
+				this.visible = false;
+			}
+
+			
+			public function netStatusHandler(e:NetStatusEvent):void {
+				switch (e.info.code) {
+					case "NetConnection.Connect.Success":
+						connectStream();
+						break;	
+					
+				}
+			}
+			public function securityErrorHandler(e:NetStatusEvent):void {
+				//trace(e.info.code);
+			}
+			
+			public function asyncErrorHandler(e:AsyncErrorEvent):void {
+				//trace(ObjectUtil.toString(e));
+			}
+			public function connectStream():void {
+				stream = new NetStream(connection);
+				stream.addEventListener(NetStatusEvent.NET_STATUS, netStatusHandler);
+				stream.addEventListener(AsyncErrorEvent.ASYNC_ERROR, asyncErrorHandler);
+				stream.client = this;
+				if (hasCam && useCam) stream.attachCamera(cam);
+				if (hasMic && useMic) stream.attachAudio(mic);
+				
+				video = new Video();
+				video.width = mediaUIContainer.width;
+				video.height = mediaUIContainer.height;
+				
+				if (hasCam && useCam) {
+					video.attachCamera(cam);
+					mediaUIContainer.height = 245;
+					video.height = 245;
+					this.height = 400;
+					mediaStatus('Camera detected');
+				}
+				else {
+					video.height = 0;
+					mediaUIContainer.height = 0;
+					this.height = 190;
+					mediaStatus('Camera not detected (you will be unable to record video)');
+				}
+				if (hasMic) {
+					mediaStatus('Microphone detected');
+				}
+				else {
+					mediaStatus('Microphone not detected (you will be unable to record audio)');
+				}
+				mediaUIContainer.addChild(video);
+			}
+			
+			public function toggleCam():void {
+				if (useCam) {
+					useCam = false;
+					video.visible = false;
+					video.height = 0;
+					mediaUIContainer.height = 0;
+					this.height = 190;
+					video.attachCamera(null);
+					stream.attachCamera(null);
+					mediaStatus('Camera disabled');
+				}
+				else {
+					useCam = true;
+					mediaUIContainer.height = 245;
+					video.visible = true;
+					video.height = mediaUIContainer.height;
+					this.height = 400;
+					video.attachCamera(cam);
+					stream.attachCamera(cam);
+					mediaStatus('Camera enabled');
+				}
+			}
+			
+			public function onPlayStatus(i:Object):void {
+				//trace(ObjectUtil.toString(i));
+				if (i.code == "NetStream.Play.Complete") stop();
+			}
+			public function onMetaData(i:Object):void {
+				//trace(ObjectUtil.toString(i));
+			}
+			public function onCuePoint(e:Object):void {
+				//trace(ObjectUtil.toString(e));
+			}
+			public function publishClicked():void {
+				if (!isRecording) {
+					if (mediaExists) {
+						Alert.show('Are you sure? Existing media will be overwritten.', 'Record Media', 3, this, publish);
+					}
+					else {
+						//g1.play();
+						var e:CloseEvent = new CloseEvent(CloseEvent.CLOSE);
+						publish(e);
+					}
+				}
+				else {
+					mediaStatus('Recording in progress');
+				}
+				
+			}
+			public function deleteNarrationClicked():void {
+				if (mediaExists) {
+					Alert.show('Are you sure you want to delete this media?', 'Delete Media', 3, this, deleteNarration);
+				}
+			}
+			
+			public function deleteNarration(e:CloseEvent):void {
+				if (e.detail != 2) {
+					deleteSlideMedia();
+				}
+				else {
+					mediaStatus('Delete cancelled');
+				}
+			}
+			
+			public function publish(e:CloseEvent):void {
+				if (isPlaying) stop();
+				
+				if (e.detail != 2) {
+					this.status = 'Recording';
+					mediaStatus('Recording media');
+					isRecording = true;
+					var type:String = 'record';
+					stream.publish(streamName, type);
+					parentApplication.slideDisplay.selectedItem.HASMEDIA;
+					mediaExists = true;
+				}
+				else {
+					mediaStatus('Recording cancelled');
+				}
+				
+				
+			}
+			public function stop():void {
+				this.status = '';
+				stream.close();
+				connectStream();
+				if (hasCam && useCam) {
+					video.attachCamera(cam);
+					stream.attachCamera(cam);
+				}
+				if (isRecording) {
+					saveSlideInfo();
+				}
+				if (isPlaying || isRecording) {
+					mediaStatus('Media stopped');	
+				}
+				else {
+					
+				}
+				isRecording = false;
+				isPlaying = false;
+			}
+			public function play():void {
+				if (mediaExists) {
+					isPlaying = true;
+					video.attachNetStream(stream);
+					stream.play(streamName);
+					mediaStatus('Playing media');
+				}
+				else {
+					mediaStatus('Slide does not currently have media.');
+				}
+			}
+			
+			public function mediaStatus(msg:String):void {
+				mediaStatusLog.text += msg + '\n';
+			}
+			
+			public function statusChanged(e:Event):void {
+				mediaStatusLog.verticalScrollPosition = mediaStatusLog.maxVerticalScrollPosition;
+			}
+			
+			public function updateSlideHandler(event:ResultEvent):void {
+				//empty for now
+			}
+			public function saveSlideInfoHandler(event:ResultEvent):void {
+				mediaExists = true;
+				parentApplication.slideDisplay.selectedItem.HASMEDIA = mediaExists;
+			}
+			
+			public function saveMediaDeleteHandler(event:ResultEvent):void {
+				mediaStatus('Media has been deleted');
+				mediaExists = false;
+				parentApplication.slideDisplay.selectedItem.HASMEDIA = mediaExists;
+			}
+			
+			public function deleteSlideMedia():void{
+				slideShowService.deleteSlideMediaBySlideID.send(slideID);
+			}
+			
+			public function saveSlideInfo():void{
+				var p:Object = new Object();
+				p.pathToSlideMedia = '/' + alias + '/' + streamName + '.flv';
+				slideShowService.saveSlideInfo.send(slideID,p);
+			}
+		]]>
+	</mx:Script>
+	<mx:RemoteObject id="slideShowService" endpoint="/flex2gateway/" destination="ColdFusion" source="services.slideshows.RemoteSlideshowService" showBusyCursor="true">
+		<mx:method name="saveSlideInfo" result="saveSlideInfoHandler(event)" fault="parentApplication.faultHandler(event)" />
+		<mx:method name="deleteSlideMediaBySlideID" result="saveMediaDeleteHandler(event)" fault="parentApplication.faultHandler(event)" />
+	</mx:RemoteObject>
+	
+	<mx:Glow id="g1" duration="500" color="#cc0000" target="recordBtn" />
+	
+	<mx:Canvas>
+		<mx:UIComponent id="mediaUIContainer" width="322" height="245" />
+		<mx:UIComponent id="playBackContainer" width="130" height="98" visible="true" bottom="5" right="5" />
+		<mx:Image source="{useCam ? camOffImg : camOnImg}" alpha="{hasCam ? 1.0 : 0.1}" enabled="{hasCam}" click="toggleCam()" right="5" top="5" toolTip="{hasCam ? useCam ? 'Turn cam off' : 'Turn cam on' : 'No cam detected'}" />
+		<mx:Image source="{deleteImg}" alpha="{mediaExists ? 1.0 : 0.0}" enabled="{mediaExists}" click="deleteNarrationClicked()" left="5" top="5" toolTip="{mediaExists ? 'Delete Media' : ''}" />
+		<mx:HBox horizontalAlign="center" width="100%" bottom="0">
+			<mx:Image source="{isRecording ? recordImg : recordOffImg}" alpha="{hasCam || hasMic ? 1.0 : 0.1}" enabled="{hasCam || hasMic ? true : false}" click="publishClicked()" toolTip="{isRecording ? 'Currently recording' : 'Record media'}" id="recordBtn" />
+			<mx:Image source="{stopImg}" alpha="{isPlaying || isRecording ? 1.0 : 0.3}" enabled="{isPlaying || isRecording}" click="stop()" toolTip="{stopBtn.enabled ? 'Stop playback' : 'Media is not currently playing or recording'}" id="stopBtn" />
+			<mx:Image source="{playImg}" alpha="{!isRecording &amp;&amp; !isPlaying &amp;&amp; mediaExists ? 1.0 : 0.3}" enabled="{!isRecording &amp;&amp; !isPlaying &amp;&amp; mediaExists}" click="play()" id="playBtn" toolTip="{playBtn.enabled ? 'Play this media file' : 'Playback unavailable'}" />
+		</mx:HBox>
+	</mx:Canvas>
+	<mx:ControlBar id="mediaControlBar" styleName="windowControlBar" height="115">
+		
+		<mx:VBox width="100%">
+			
+			<mx:HBox width="100%">
+				<mx:VBox width="100%">
+					<mx:ComboBox id="selectedCam" width="310" change="setCam()" dataProvider="{Camera.names}" enabled="{Camera.names.length &gt; 0}" toolTip="{selectedCam.enabled ? 'Choose the web camera to use to record video' : 'No web cams were detected'}" />
+					<mx:TextArea id="mediaStatusLog" width="310" height="60" editable="false" valueCommit="statusChanged(event)" />
+				</mx:VBox>
+			</mx:HBox>
+		</mx:VBox>
+	</mx:ControlBar>
+</mx:TitleWindow>
